@@ -206,7 +206,7 @@ var (
 	}
 )
 
-var app = flags.NewApp("the go-ethereum command line interface")
+var app = flags.NewApp("the O2UL command line interface")
 
 func init() {
 	// Initialize the CLI app and start Geth
