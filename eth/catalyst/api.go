@@ -1147,7 +1147,8 @@ func (api *ConsensusAPI) heartbeat() {
 		if time.Since(offlineLogged) > beaconUpdateWarnFrequency {
 			if lastForkchoiceUpdate.IsZero() && lastNewPayloadUpdate.IsZero() {
 				if lastTransitionUpdate.IsZero() {
-					log.Warn("Post-merge network, but no beacon client seen. Please launch one to follow the chain!")
+					// We are a fresh blockchain, no need to warn the user as is all built in
+					// log.Warn("Post-merge network, but no beacon client seen. Please launch one to follow the chain!")
 				} else {
 					log.Warn("Beacon client online, but never received consensus updates. Please ensure your beacon client is operational to follow the chain!")
 				}
