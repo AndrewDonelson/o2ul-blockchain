@@ -138,6 +138,42 @@ var (
 		Value:    ethconfig.Defaults.NetworkId,
 		Category: flags.EthCategory,
 	}
+
+	// O2ULMainnetFlag defines the main O²UL network
+	O2ULMainnetFlag = &cli.BoolFlag{
+		Name:     "mainnet",
+		Usage:    "O²UL main network",
+		Category: flags.EthCategory,
+	}
+
+	// O2ULTestnetFlag defines the O²UL test network
+	O2ULTestnetFlag = &cli.BoolFlag{
+		Name:     "testnet",
+		Usage:    "O²UL test network",
+		Category: flags.EthCategory,
+	}
+
+	// O2ULDevnetFlag defines the O²UL development network
+	O2ULDevnetFlag = &cli.BoolFlag{
+		Name:     "devnet",
+		Usage:    "O²UL development network",
+		Category: flags.EthCategory,
+	}
+
+	// O2ULStageFlag defines the O²UL staging network
+	O2ULStageFlag = &cli.BoolFlag{
+		Name:     "stagenet",
+		Usage:    "O²UL staging network",
+		Category: flags.EthCategory,
+	}
+
+	// O2ULDeveloperFlag enables developer mode with instant mining
+	O2ULDeveloperFlag = &cli.BoolFlag{
+		Name:     "dev",
+		Usage:    "O²UL ephemeral developer mode",
+		Category: flags.DevCategory,
+	}
+
 	MainnetFlag = &cli.BoolFlag{
 		Name:     "mainnet",
 		Usage:    "Ethereum mainnet",
@@ -159,6 +195,7 @@ var (
 		Usage:    "Ephemeral proof-of-authority network with a pre-funded developer account, mining enabled",
 		Category: flags.DevCategory,
 	}
+
 	DeveloperPeriodFlag = &cli.Uint64Flag{
 		Name:     "dev.period",
 		Usage:    "Block period to use in developer mode (0 = mine only if transaction pending)",
