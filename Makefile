@@ -1,22 +1,32 @@
+# file: /Makefile
+# description: Makefile for building and managing O²UL blockchain project
+# module: Build
+# License: MIT
+# Author: Andrew Donelson
+# Copyright 2025 Andrew Donelson
+# Portions Copyright 2014-2024 The go-ethereum Authors
+
 # This Makefile is meant to be used by people that do not usually work
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: geth all test lint fmt clean devtools help
+.PHONY: o2ul all test lint fmt clean devtools help
 
 GOBIN = ./build/bin
 GO ?= latest
 GORUN = go run
 
-#? geth: Build geth.
-geth:
+#? o2ul: Build o2ul.
+o2ul:
 	$(GORUN) build/ci.go install ./cmd/geth
+	@mv $(GOBIN)/geth $(GOBIN)/o2ul
 	@echo "Done building."
-	@echo "Run \"$(GOBIN)/geth\" to launch geth."
+	@echo "Run \"$(GOBIN)/o2ul\" to launch o2ul."
 
 #? all: Build all packages and executables.
 all:
 	$(GORUN) build/ci.go install
+	@if [ -f $(GOBIN)/geth ]; then mv $(GOBIN)/geth $(GOBIN)/o2ul; fi
 
 #? test: Run the tests.
 test: all

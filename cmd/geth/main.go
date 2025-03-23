@@ -46,7 +46,7 @@ import (
 )
 
 const (
-	clientIdentifier = "geth" // Client identifier to advertise over the network
+	clientIdentifier = "o2ul" // Client identifier to advertise over the network
 )
 
 var (
@@ -211,6 +211,7 @@ var app = flags.NewApp("the go-ethereum command line interface")
 func init() {
 	// Initialize the CLI app and start Geth
 	app.Action = geth
+	app.Copyright = "Copyright 2025 Andrew Donelson, Portions Copyright 2014-2024 The go-ethereum Authors"
 	app.Commands = []*cli.Command{
 		// See chaincmd.go:
 		initCommand,
