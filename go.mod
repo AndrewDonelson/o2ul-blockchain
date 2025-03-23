@@ -1,8 +1,11 @@
 module github.com/ethereum/go-ethereum
 
-go 1.23.0
+go 1.23.3
+
+replace github.com/AndrewDonelson/o2ul-proprietary => ../o2ul-proprietary
 
 require (
+	github.com/AndrewDonelson/o2ul-proprietary v0.0.0-00010101000000-000000000000
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/VictoriaMetrics/fastcache v1.12.2
