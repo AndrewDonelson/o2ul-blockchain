@@ -1,26 +1,79 @@
-# O2UL Blockchain (forked from Go Ethereum 1.15.5)
 
-Golang execution layer implementation of the Ethereum protocol.
+# O²UL: The Dawn of Truly Universal Currency
 
-[![API Reference](
-https://pkg.go.dev/badge/github.com/ethereum/go-ethereum
-)](https://pkg.go.dev/github.com/ethereum/go-ethereum?tab=doc)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ethereum/go-ethereum)](https://goreportcard.com/report/github.com/ethereum/go-ethereum)
-[![Travis](https://app.travis-ci.com/ethereum/go-ethereum.svg?branch=master)](https://app.travis-ci.com/github/ethereum/go-ethereum)
-[![Discord](https://img.shields.io/badge/discord-join%20chat-blue.svg)](https://discord.gg/nthXNEv)
+O2UL Blockchain (forked from Go Ethereum 1.15.5)
 
-Automated builds are available for stable releases and the unstable master branch. Binary
-archives are published at https://geth.ethereum.org/downloads/.
+## A Revolution in Digital Money
+
+O²UL (Orbis Omnira Unitas Lex) isn't just another cryptocurrency—it's the first global financial system designed for humanity's collective prosperity. By fusing blockchain innovation with cutting-edge AI analysis, O²UL creates something unprecedented: a dual-token system combining the investment potential of Bitcoin with stability that outperforms traditional financial instruments.
+
+## The Dual-Token Advantage
+
+### O2V (Value Token): Digital Gold Reimagined
+
+The O2V token follows Bitcoin's proven scarcity model with a maximum supply of just 21 million tokens. But unlike Bitcoin, O2V serves a critical function within the O²UL ecosystem:
+
+- Acts as the system's store of value and volatility buffer
+- Provides governance rights over the entire protocol
+- Generates passive income through transaction fee sharing
+- Functions as a key component in the stability mechanism
+
+When staked, O2V holders receive 0.25% of all transaction fees—creating continuous income simply for participating in network security.
+
+### O2S (Ultra-Stable Token): Stability Redefined
+
+The O2S token represents a quantum leap in stablecoin design. Unlike traditional stablecoins pegged to single currencies like the USD, O2S derives its value from a sophisticated continental fiat analysis system:
+
+- Achieves 5.58x reduction in volatility compared to base calculations
+- Updates every 6 hours (4x daily) for exceptional responsiveness
+- Operates without collateral requirements through pure algorithmic design
+- Creates stability through advanced time-weighted averaging
+
+## How O²UL Achieves Unparalleled Stability
+
+The heart of O²UL's innovation lies in its approach to stability. The system gathers fiat value assessments across six continents, analyzing economic data through multiple AI services. This continental approach creates natural hedging against regional economic fluctuations.
+
+The system's time-weighted averaging algorithm processes data across multiple timeframes:
+- Current values (real-time)
+- Short-term trends (3-day to 1-week)
+- Medium-term indicators (1-month to 3-month)
+- Long-term economic patterns (6-month to 1-year)
+
+Each timeframe utilizes custom smoothing windows to dampen volatility while remaining responsive to genuine economic shifts. This creates a currency that's steady yet adaptive—providing the reliability of traditional money with the freedom of digital assets.
+
+## Seigniorage: The Self-Balancing Mechanism
+
+When O2S deviates from its target value:
+- During expansion: New O2S tokens enter circulation, and O2V holders can burn tokens to mint new O2S
+- During contraction: O2V holders can purchase O2S at a discount, removing tokens from circulation
+
+This algorithmic dance between the two tokens creates a self-correcting system that functions without external collateral—a breakthrough in digital currency design.
+
+## The Technical Foundation
+
+O²UL combines the best elements of existing blockchain systems:
+- Go-Ethereum's battle-tested foundation
+- Advanced consensus mechanisms for validator coordination
+- EVM compatibility for seamless developer adoption
+- Built-in smart contracts for core functionality
+
+The elegant 0.5% flat fee structure generates substantial revenue while significantly undercutting traditional payment rails—saving users $20 per $1,000 transaction compared to credit card processors.
+
+## A Currency for Humanity's Future
+
+O²UL isn't just technology—it's a fundamental reimagining of what money can be. Not controlled by any single government or tied to any one economy, it's designed to serve humanity as a whole. The O2S token isn't just stable—it's responsive to global economic reality in a way no previous currency has achieved.
+
+Welcome to O²UL—where financial stability meets digital innovation in service of human prosperity.
 
 ## Building the source
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
-Building `geth` requires both a Go (version 1.23 or later) and a C compiler. You can install
+Building `o2ul` requires both a Go (version 1.23 or later) and a C compiler. You can install
 them using your favourite package manager. Once the dependencies are installed, run
 
 ```shell
-make geth
+make o2ul
 ```
 
 or, to build the full suite of utilities:
@@ -36,19 +89,19 @@ directory.
 
 |  Command   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | :--------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`geth`** | Our main Ethereum CLI client. It is the entry point into the Ethereum network (main-, test- or private net), capable of running as a full node (default), archive node (retaining all historical state) or a light node (retrieving data live). It can be used by other processes as a gateway into the Ethereum network via JSON RPC endpoints exposed on top of HTTP, WebSocket and/or IPC transports. `geth --help` and the [CLI page](https://geth.ethereum.org/docs/fundamentals/command-line-options) for command line options. |
-|   `clef`   | Stand-alone signing tool, which can be used as a backend signer for `geth`.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **`o2ul`** | Our main Ethereum CLI client. It is the entry point into the Ethereum network (main-, test- or private net), capable of running as a full node (default), archive node (retaining all historical state) or a light node (retrieving data live). It can be used by other processes as a gateway into the Ethereum network via JSON RPC endpoints exposed on top of HTTP, WebSocket and/or IPC transports. `o2ul --help` and the [CLI page](https://geth.ethereum.org/docs/fundamentals/command-line-options) for command line options. |
+|   `clef`   | Stand-alone signing tool, which can be used as a backend signer for `o2ul`.                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |  `devp2p`  | Utilities to interact with nodes on the networking layer, without running a full blockchain.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |  `abigen`  | Source code generator to convert Ethereum contract definitions into easy-to-use, compile-time type-safe Go packages. It operates on plain [Ethereum contract ABIs](https://docs.soliditylang.org/en/develop/abi-spec.html) with expanded functionality if the contract bytecode is also available. However, it also accepts Solidity source files, making development much more streamlined. Please see our [Native DApps](https://geth.ethereum.org/docs/developers/dapp-developer/native-bindings) page for details.                                  |
 |   `evm`    | Developer utility version of the EVM (Ethereum Virtual Machine) that is capable of running bytecode snippets within a configurable environment and execution mode. Its purpose is to allow isolated, fine-grained debugging of EVM opcodes (e.g. `evm --code 60ff60ff --debug run`).                                                                                                                                                                                                                                               |
 | `rlpdump`  | Developer utility tool to convert binary RLP ([Recursive Length Prefix](https://ethereum.org/en/developers/docs/data-structures-and-encoding/rlp)) dumps (data encoding used by the Ethereum protocol both network as well as consensus wise) to user-friendlier hierarchical representation (e.g. `rlpdump --hex CE0183FFFFFFC4C304050583616263`).                                                                                                                                                                                |
 
-## Running `geth`
+## Running `o2ul`
 
 Going through all the possible command line flags is out of scope here (please consult our
 [CLI Wiki page](https://geth.ethereum.org/docs/fundamentals/command-line-options)),
 but we've enumerated a few common parameter combos to get you up to speed quickly
-on how you can run your own `geth` instance.
+on how you can run your own `o2ul` instance.
 
 ### Hardware Requirements
 
@@ -74,19 +127,19 @@ particular use case, the user doesn't care about years-old historical data, so w
 sync quickly to the current state of the network. To do so:
 
 ```shell
-$ geth console
+$ o2ul console
 ```
 
 This command will:
- * Start `geth` in snap sync mode (default, can be changed with the `--syncmode` flag),
+ * Start `o2ul` in snap sync mode (default, can be changed with the `--syncmode` flag),
    causing it to download more data in exchange for avoiding processing the entire history
    of the Ethereum network, which is very CPU intensive.
  * Start the built-in interactive [JavaScript console](https://geth.ethereum.org/docs/interacting-with-geth/javascript-console),
    (via the trailing `console` subcommand) through which you can interact using [`web3` methods](https://github.com/ChainSafe/web3.js/blob/0.20.7/DOCUMENTATION.md) 
-   (note: the `web3` version bundled within `geth` is very old, and not up to date with official docs),
-   as well as `geth`'s own [management APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc).
+   (note: the `web3` version bundled within `o2ul` is very old, and not up to date with official docs),
+   as well as `o2ul`'s own [management APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc).
    This tool is optional and if you leave it out you can always attach it to an already running
-   `geth` instance with `geth attach`.
+   `o2ul` instance with `o2ul attach`.
 
 ### A Full node on the Holesky test network
 
@@ -97,45 +150,45 @@ network, you want to join the **test** network with your node, which is fully eq
 the main network, but with play-Ether only.
 
 ```shell
-$ geth --holesky console
+$ o2ul --holesky console
 ```
 
 The `console` subcommand has the same meaning as above and is equally
 useful on the testnet too.
 
-Specifying the `--holesky` flag, however, will reconfigure your `geth` instance a bit:
+Specifying the `--holesky` flag, however, will reconfigure your `o2ul` instance a bit:
 
  * Instead of connecting to the main Ethereum network, the client will connect to the Holesky 
    test network, which uses different P2P bootnodes, different network IDs and genesis
    states.
- * Instead of using the default data directory (`~/.ethereum` on Linux for example), `geth`
+ * Instead of using the default data directory (`~/.ethereum` on Linux for example), `o2ul`
    will nest itself one level deeper into a `holesky` subfolder (`~/.ethereum/holesky` on
    Linux). Note, on OSX and Linux this also means that attaching to a running testnet node
-   requires the use of a custom endpoint since `geth attach` will try to attach to a
+   requires the use of a custom endpoint since `o2ul attach` will try to attach to a
    production node endpoint by default, e.g.,
-   `geth attach <datadir>/holesky/geth.ipc`. Windows users are not affected by
+   `o2ul attach <datadir>/holesky/geth.ipc`. Windows users are not affected by
    this.
 
 *Note: Although some internal protective measures prevent transactions from
 crossing over between the main network and test network, you should always
 use separate accounts for play and real money. Unless you manually move
-accounts, `geth` will by default correctly separate the two networks and will not make any
+accounts, `o2ul` will by default correctly separate the two networks and will not make any
 accounts available between them.*
 
 ### Configuration
 
-As an alternative to passing the numerous flags to the `geth` binary, you can also pass a
+As an alternative to passing the numerous flags to the `o2ul` binary, you can also pass a
 configuration file via:
 
 ```shell
-$ geth --config /path/to/your_config.toml
+$ o2ul --config /path/to/your_config.toml
 ```
 
 To get an idea of how the file should look like you can use the `dumpconfig` subcommand to
 export your existing configuration:
 
 ```shell
-$ geth --your-favourite-flags dumpconfig
+$ o2ul --your-favourite-flags dumpconfig
 ```
 
 #### Docker quick start
@@ -149,25 +202,25 @@ docker run -d --name ethereum-node -v /Users/alice/ethereum:/root \
            ethereum/client-go
 ```
 
-This will start `geth` in snap-sync mode with a DB memory allowance of 1GB, as the
+This will start `o2ul` in snap-sync mode with a DB memory allowance of 1GB, as the
 above command does.  It will also create a persistent volume in your home directory for
 saving your blockchain as well as map the default ports. There is also an `alpine` tag
 available for a slim version of the image.
 
 Do not forget `--http.addr 0.0.0.0`, if you want to access RPC from other containers
-and/or hosts. By default, `geth` binds to the local interface and RPC endpoints are not
+and/or hosts. By default, `o2ul` binds to the local interface and RPC endpoints are not
 accessible from the outside.
 
-### Programmatically interfacing `geth` nodes
+### Programmatically interfacing `o2ul` nodes
 
-As a developer, sooner rather than later you'll want to start interacting with `geth` and the
+As a developer, sooner rather than later you'll want to start interacting with `o2ul` and the
 Ethereum network via your own programs and not manually through the console. To aid
-this, `geth` has built-in support for a JSON-RPC based APIs ([standard APIs](https://ethereum.github.io/execution-apis/api-documentation/)
-and [`geth` specific APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc)).
+this, `o2ul` has built-in support for a JSON-RPC based APIs ([standard APIs](https://ethereum.github.io/execution-apis/api-documentation/)
+and [`o2ul` specific APIs](https://geth.ethereum.org/docs/interacting-with-geth/rpc)).
 These can be exposed via HTTP, WebSockets and IPC (UNIX sockets on UNIX based
 platforms, and named pipes on Windows).
 
-The IPC interface is enabled by default and exposes all the APIs supported by `geth`,
+The IPC interface is enabled by default and exposes all the APIs supported by `o2ul`,
 whereas the HTTP and WS interfaces need to manually be enabled and only expose a
 subset of APIs due to security reasons. These can be turned on/off and configured as
 you'd expect.
@@ -188,7 +241,7 @@ HTTP based JSON-RPC API options:
   * `--ipcpath` Filename for IPC socket/pipe within the datadir (explicit paths escape it)
 
 You'll need to use your own programming environments' capabilities (libraries, tools, etc) to
-connect via HTTP, WS or IPC to a `geth` node configured with the above flags and you'll
+connect via HTTP, WS or IPC to a `o2ul` node configured with the above flags and you'll
 need to speak [JSON-RPC](https://www.jsonrpc.org/specification) on all transports. You
 can reuse the same connection for multiple requests!
 
