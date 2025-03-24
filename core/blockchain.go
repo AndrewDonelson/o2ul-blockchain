@@ -24,7 +24,6 @@ import (
 	"math/big"
 	"runtime"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -292,13 +291,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	if err != nil {
 		return nil, err
 	}
-	log.Info("")
-	log.Info(strings.Repeat("-", 153))
-	for _, line := range strings.Split(chainConfig.Description(), "\n") {
-		log.Info(line)
-	}
-	log.Info(strings.Repeat("-", 153))
-	log.Info("")
+
+	params.LogO2ULBanner()
+	params.LogO2ULDescription(chainConfig)
 
 	bc := &BlockChain{
 		chainConfig:   chainConfig,
