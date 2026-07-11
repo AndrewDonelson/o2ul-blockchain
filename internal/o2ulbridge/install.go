@@ -14,7 +14,95 @@ import (
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/shielded"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/threshold"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/viewkeys"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 )
+
+const externalProviderMetricsPrefix = "o2ul/proofs/external_provider"
+
+var newExternalProviderObserver = func() proofs.ExternalProviderObserver {
+	return externalProviderCompositeObserver{observers: []proofs.ExternalProviderObserver{
+		externalProviderLogObserver{},
+		externalProviderMetricsObserver{prefix: externalProviderMetricsPrefix},
+	}}
+}
+
+type externalProviderCompositeObserver struct {
+	observers []proofs.ExternalProviderObserver
+}
+
+func (o externalProviderCompositeObserver) ObserveExternalProviderCall(event proofs.ExternalProviderCallEvent) {
+	for _, obs := range o.observers {
+		if obs == nil {
+			continue
+		}
+		obs.ObserveExternalProviderCall(event)
+	}
+}
+
+type externalProviderLogObserver struct{}
+
+func (externalProviderLogObserver) ObserveExternalProviderCall(event proofs.ExternalProviderCallEvent) {
+	if event.Success {
+		log.Debug("o2ul external proofs provider call",
+			"engine", event.Engine,
+			"transport", event.Transport,
+			"action", event.Action,
+			"attempt", event.Attempt,
+			"httpStatus", event.HTTPStatus,
+			"durationMs", event.Duration.Milliseconds(),
+		)
+		return
+	}
+	log.Warn("o2ul external proofs provider call failed",
+		"engine", event.Engine,
+		"transport", event.Transport,
+		"action", event.Action,
+		"attempt", event.Attempt,
+		"httpStatus", event.HTTPStatus,
+		"durationMs", event.Duration.Milliseconds(),
+		"error", event.ErrorMessage,
+	)
+}
+
+type externalProviderMetricsObserver struct {
+	prefix string
+}
+
+func (o externalProviderMetricsObserver) ObserveExternalProviderCall(event proofs.ExternalProviderCallEvent) {
+	if !metrics.Enabled() {
+		return
+	}
+	metrics.GetOrRegisterCounter(o.prefix+"/calls/total", nil).Inc(1)
+	metrics.GetOrRegisterTimer(o.prefix+"/latency", nil).Update(event.Duration)
+
+	transport := metricKeyPart(event.Transport, "unknown")
+	action := metricKeyPart(event.Action, "unknown")
+	metrics.GetOrRegisterCounter(fmt.Sprintf("%s/calls/%s/%s/total", o.prefix, transport, action), nil).Inc(1)
+
+	status := "failure"
+	if event.Success {
+		status = "success"
+	}
+	metrics.GetOrRegisterCounter(o.prefix+"/calls/"+status, nil).Inc(1)
+	metrics.GetOrRegisterCounter(fmt.Sprintf("%s/calls/%s/%s/%s", o.prefix, transport, action, status), nil).Inc(1)
+
+	if event.HTTPStatus > 0 {
+		class := fmt.Sprintf("%dxx", event.HTTPStatus/100)
+		metrics.GetOrRegisterCounter(o.prefix+"/http_status/"+class, nil).Inc(1)
+	}
+}
+
+func metricKeyPart(value string, fallback string) string {
+	v := strings.TrimSpace(strings.ToLower(value))
+	if v == "" {
+		return fallback
+	}
+	v = strings.ReplaceAll(v, " ", "_")
+	v = strings.ReplaceAll(v, "/", "_")
+	v = strings.ReplaceAll(v, "-", "_")
+	return v
+}
 
 type BackendMode string
 
@@ -77,6 +165,10 @@ func parseBackendModeWithDefault(env string, def BackendMode) (BackendMode, erro
 }
 
 func NewRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) (*pblockchain.RuntimeBridge, error) {
+	return newRuntimeBridgeWithConfig(cfg, "")
+}
+
+func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*pblockchain.RuntimeBridge, error) {
 	proofCfg := proofs.BackendConfig{Kind: proofs.BackendKind(cfg.Proofs)}
 	if cfg.Proofs == BackendModeProduction {
 		proofBackend, err := buildProofProductionBackend()
@@ -90,7 +182,7 @@ func NewRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) (*pblockchain.RuntimeB
 		return nil, err
 	}
 
-	shieldedPool, err := buildShieldedPool(cfg)
+	shieldedPool, err := buildShieldedPool(cfg, nodeDataDir)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +223,7 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 	if flavor == "external" {
 		providerURL := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL"))
 		providerCmd := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_CMD"))
+		observer := newExternalProviderObserver()
 		var engine proofs.ExternalZKEngine
 		if providerURL != "" {
 			timeoutMS, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_TIMEOUT_MS", 5000)
@@ -153,13 +246,17 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 				MaxRetries:         maxRetries,
 				RetryDelay:         time.Duration(retryDelayMS) * time.Millisecond,
 				InsecureSkipVerify: insecureSkipVerify,
+				Observer:           observer,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("proofs production backend init: %w", err)
 			}
 			engine = httpEngine
 		} else if providerCmd != "" {
-			procEngine, err := proofs.NewProcessExternalZKEngine(providerCmd)
+			procEngine, err := proofs.NewProcessExternalZKEngineWithConfig(proofs.ProcessExternalZKEngineConfig{
+				CommandLine: providerCmd,
+				Observer:    observer,
+			})
 			if err != nil {
 				return nil, fmt.Errorf("proofs production backend init: %w", err)
 			}
@@ -224,13 +321,21 @@ func buildNFTAdapters(cfg RuntimeBackendConfig) (*nft.InMemoryRegistry, nft.Owne
 	return nft.NewInMemoryRegistryWithVerifier(ownership), ownership
 }
 
-func buildShieldedPool(cfg RuntimeBackendConfig) (*shielded.InMemoryPool, error) {
+func buildShieldedPool(cfg RuntimeBackendConfig, nodeDataDir string) (*shielded.InMemoryPool, error) {
 	if cfg.Shielded != BackendModeProduction {
 		return shielded.NewInMemoryPool(), nil
 	}
 	path := strings.TrimSpace(os.Getenv("O2UL_SHIELDED_NULLIFIER_DB"))
 	if path == "" {
-		path = filepath.Join(os.TempDir(), "o2ul", "shielded", "nullifiers.json")
+		resolvedDataDir := strings.TrimSpace(nodeDataDir)
+		if resolvedDataDir == "" {
+			resolvedDataDir = strings.TrimSpace(os.Getenv("O2UL_NODE_DATA_DIR"))
+		}
+		if resolvedDataDir != "" {
+			path = filepath.Join(resolvedDataDir, "o2ul", "shielded", "nullifiers.json")
+		} else {
+			path = filepath.Join(os.TempDir(), "o2ul", "shielded", "nullifiers.json")
+		}
 	}
 	p, err := shielded.NewFileNullifierPersistence(path)
 	if err != nil {
@@ -244,7 +349,11 @@ func NewDefaultRuntimeBridge() (*pblockchain.RuntimeBridge, error) {
 }
 
 func InstallRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) error {
-	bridge, err := NewRuntimeBridgeWithConfig(cfg)
+	return installRuntimeBridgeWithConfig(cfg, "")
+}
+
+func installRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) error {
+	bridge, err := newRuntimeBridgeWithConfig(cfg, nodeDataDir)
 	if err != nil {
 		return err
 	}
@@ -252,14 +361,22 @@ func InstallRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) error {
 	return nil
 }
 
-func InstallRuntimeBridgeFromEnv() error {
+func InstallRuntimeBridgeWithConfigAndNodeDataDir(cfg RuntimeBackendConfig, nodeDataDir string) error {
+	return installRuntimeBridgeWithConfig(cfg, nodeDataDir)
+}
+
+func InstallRuntimeBridgeFromEnvWithNodeDataDir(nodeDataDir string) error {
 	cfg, err := RuntimeBackendConfigFromEnv()
 	if err != nil {
 		return err
 	}
-	return InstallRuntimeBridgeWithConfig(cfg)
+	return installRuntimeBridgeWithConfig(cfg, nodeDataDir)
+}
+
+func InstallRuntimeBridgeFromEnv() error {
+	return InstallRuntimeBridgeFromEnvWithNodeDataDir("")
 }
 
 func InstallDefaultRuntimeBridge() error {
-	return InstallRuntimeBridgeWithConfig(DefaultRuntimeBackendConfig())
+	return installRuntimeBridgeWithConfig(DefaultRuntimeBackendConfig(), "")
 }

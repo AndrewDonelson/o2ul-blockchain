@@ -281,7 +281,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.netRPCService = ethapi.NewNetAPI(eth.p2pServer, networkID)
 
 	// Register the backend on the node
-	if err := o2ulbridge.InstallRuntimeBridgeFromEnv(); err != nil {
+	if err := o2ulbridge.InstallRuntimeBridgeFromEnvWithNodeDataDir(stack.Config().DataDir); err != nil {
 		return nil, err
 	}
 	stack.RegisterAPIs(eth.APIs())
