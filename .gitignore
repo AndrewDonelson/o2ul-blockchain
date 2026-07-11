@@ -21,6 +21,7 @@
 /build/_workspace/
 /build/cache/
 /build/bin/
+/tmp/
 /geth*.zip
 
 # used by the build/ci.go archive + upload tool
