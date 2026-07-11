@@ -672,6 +672,28 @@ func TestInstallRuntimeBridgeFromEnvRejectsInvalidExternalHTTPNumericSettings(t 
 	}
 }
 
+func TestInstallRuntimeBridgeFromEnvRejectsAmbiguousExternalProviderConfig(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "production")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_PROOFS_PRODUCTION_FLAVOR", "external")
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL", "http://example.invalid")
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_CMD", "echo provider")
+
+	path := filepath.Join(t.TempDir(), "proof-circuits.json")
+	if err := os.WriteFile(path, []byte(`{"circuits":{"proof":"6b65792d31"}}`), 0o600); err != nil {
+		t.Fatalf("write circuit key file: %v", err)
+	}
+	t.Setenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON", path)
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected ambiguous provider config error")
+	}
+}
+
 func TestInstallRuntimeBridgeFromEnvRejectsProofsAllRevokedKeys(t *testing.T) {
 	t.Setenv("O2UL_BACKEND_PROOFS", "production")
 	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")

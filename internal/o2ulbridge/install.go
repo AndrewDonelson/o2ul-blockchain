@@ -223,13 +223,16 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 	if flavor == "external" {
 		providerURL := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL"))
 		providerCmd := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_CMD"))
+		if providerURL != "" && providerCmd != "" {
+			return nil, fmt.Errorf("proofs production backend init: only one of O2UL_PROOFS_EXTERNAL_PROVIDER_URL or O2UL_PROOFS_EXTERNAL_PROVIDER_CMD may be set")
+		}
 		observer := newExternalProviderObserver()
+		timeoutMS, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_TIMEOUT_MS", 5000)
+		if err != nil {
+			return nil, fmt.Errorf("proofs production backend init: %w", err)
+		}
 		var engine proofs.ExternalZKEngine
 		if providerURL != "" {
-			timeoutMS, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_TIMEOUT_MS", 5000)
-			if err != nil {
-				return nil, fmt.Errorf("proofs production backend init: %w", err)
-			}
 			maxRetries, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_MAX_RETRIES", 0)
 			if err != nil {
 				return nil, fmt.Errorf("proofs production backend init: %w", err)
@@ -255,6 +258,7 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 		} else if providerCmd != "" {
 			procEngine, err := proofs.NewProcessExternalZKEngineWithConfig(proofs.ProcessExternalZKEngineConfig{
 				CommandLine: providerCmd,
+				Timeout:     time.Duration(timeoutMS) * time.Millisecond,
 				Observer:    observer,
 			})
 			if err != nil {
