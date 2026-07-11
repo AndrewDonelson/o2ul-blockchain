@@ -77,7 +77,11 @@ func parseBackendModeWithDefault(env string, def BackendMode) (BackendMode, erro
 func NewRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) (*pblockchain.RuntimeBridge, error) {
 	proofCfg := proofs.BackendConfig{Kind: proofs.BackendKind(cfg.Proofs)}
 	if cfg.Proofs == BackendModeProduction {
-		proofCfg.Production = proofs.NewHashProductionBackend(0)
+		proofBackend, err := buildProofProductionBackend()
+		if err != nil {
+			return nil, err
+		}
+		proofCfg.Production = proofBackend
 	}
 	proofSys, err := proofs.NewProofSystemFromConfig(proofCfg)
 	if err != nil {
@@ -101,6 +105,42 @@ func NewRuntimeBridgeWithConfig(cfg RuntimeBackendConfig) (*pblockchain.RuntimeB
 		Threshold:    thresholdSigner,
 		ViewKeys:     viewKeyManager,
 	})
+}
+
+func buildProofProductionBackend() (proofs.ProductionBackend, error) {
+	flavor := strings.TrimSpace(strings.ToLower(os.Getenv("O2UL_PROOFS_PRODUCTION_FLAVOR")))
+	if flavor == "" {
+		flavor = "registry"
+	}
+	path := strings.TrimSpace(os.Getenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON"))
+	if path == "" {
+		if flavor == "external" {
+			return nil, fmt.Errorf("proofs production backend init: O2UL_PROOFS_CIRCUIT_KEYS_JSON is required for external flavor")
+		}
+		return proofs.NewHashProductionBackend(0), nil
+	}
+	records, err := proofs.LoadCircuitKeyRecordsFromJSON(path)
+	if err != nil {
+		return nil, fmt.Errorf("proofs production backend init: %w", err)
+	}
+	if err := proofs.ValidateCircuitKeyRecords(records); err != nil {
+		return nil, fmt.Errorf("proofs production backend init: %w", err)
+	}
+	if flavor == "external" {
+		backend, err := proofs.NewExternalZKRegistryBackendWithRecords(records, 0, proofs.NewHashBackedExternalZKEngine("sim-external-zk-v1"))
+		if err != nil {
+			return nil, fmt.Errorf("proofs production backend init: %w", err)
+		}
+		return backend, nil
+	}
+	if flavor != "registry" {
+		return nil, fmt.Errorf("proofs production backend init: invalid O2UL_PROOFS_PRODUCTION_FLAVOR=%q, expected registry|external", flavor)
+	}
+	backend, err := proofs.NewRegistryProductionBackendWithRecords(records, 0)
+	if err != nil {
+		return nil, fmt.Errorf("proofs production backend init: %w", err)
+	}
+	return backend, nil
 }
 
 func buildViewKeyManager(cfg RuntimeBackendConfig) *viewkeys.SimpleManager {
