@@ -10,11 +10,13 @@
 # with Go source code. If you know what GOPATH is then you probably
 # don't need to bother with make.
 
-.PHONY: o2ul all test lint fmt clean devtools help
+.PHONY: o2ul all test lint fmt clean devtools init-local reset-local help
 
 GOBIN = ./build/bin
 GO ?= latest
 GORUN = go run
+LOCAL_DATADIR ?= ./tmp/o2ul-local
+GENESIS_FILE ?= ./config/genesis.json
 
 #? o2ul: Build o2ul.
 o2ul:
@@ -31,6 +33,17 @@ all:
 #? test: Run the tests.
 test: all
 	$(GORUN) build/ci.go test
+
+#? init-local: Initialize local test datadir with O2UL custom genesis.
+init-local: o2ul
+	@mkdir -p $(LOCAL_DATADIR)
+	$(GOBIN)/o2ul --datadir $(LOCAL_DATADIR) init $(GENESIS_FILE)
+	@echo "Local datadir initialized at $(LOCAL_DATADIR) with genesis $(GENESIS_FILE)."
+
+#? reset-local: Remove local test datadir for clean re-initialization.
+reset-local:
+	rm -rf $(LOCAL_DATADIR)
+	@echo "Local datadir removed: $(LOCAL_DATADIR)"
 
 #? lint: Run certain pre-selected linters.
 lint: ## Run linters.
