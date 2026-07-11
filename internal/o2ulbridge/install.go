@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	pblockchain "github.com/AndrewDonelson/o2ul-proprietary/pkg/blockchain"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/nft"
@@ -127,7 +129,46 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 		return nil, fmt.Errorf("proofs production backend init: %w", err)
 	}
 	if flavor == "external" {
-		backend, err := proofs.NewExternalZKRegistryBackendWithRecords(records, 0, proofs.NewHashBackedExternalZKEngine("sim-external-zk-v1"))
+		providerURL := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL"))
+		providerCmd := strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_CMD"))
+		var engine proofs.ExternalZKEngine
+		if providerURL != "" {
+			timeoutMS, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_TIMEOUT_MS", 5000)
+			if err != nil {
+				return nil, fmt.Errorf("proofs production backend init: %w", err)
+			}
+			maxRetries, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_MAX_RETRIES", 0)
+			if err != nil {
+				return nil, fmt.Errorf("proofs production backend init: %w", err)
+			}
+			retryDelayMS, err := parseOptionalIntEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_RETRY_DELAY_MS", 100)
+			if err != nil {
+				return nil, fmt.Errorf("proofs production backend init: %w", err)
+			}
+			insecureSkipVerify := parseBoolEnv("O2UL_PROOFS_EXTERNAL_PROVIDER_TLS_INSECURE_SKIP_VERIFY")
+			httpEngine, err := proofs.NewHTTPExternalZKEngineWithConfig(proofs.HTTPExternalZKEngineConfig{
+				URL:                providerURL,
+				AuthBearerToken:    strings.TrimSpace(os.Getenv("O2UL_PROOFS_EXTERNAL_PROVIDER_AUTH_BEARER")),
+				Timeout:            time.Duration(timeoutMS) * time.Millisecond,
+				MaxRetries:         maxRetries,
+				RetryDelay:         time.Duration(retryDelayMS) * time.Millisecond,
+				InsecureSkipVerify: insecureSkipVerify,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("proofs production backend init: %w", err)
+			}
+			engine = httpEngine
+		} else if providerCmd != "" {
+			procEngine, err := proofs.NewProcessExternalZKEngine(providerCmd)
+			if err != nil {
+				return nil, fmt.Errorf("proofs production backend init: %w", err)
+			}
+			engine = procEngine
+		} else {
+			return nil, fmt.Errorf("proofs production backend init: one of O2UL_PROOFS_EXTERNAL_PROVIDER_URL or O2UL_PROOFS_EXTERNAL_PROVIDER_CMD is required for external flavor")
+		}
+
+		backend, err := proofs.NewExternalZKRegistryBackendWithRecords(records, 0, engine)
 		if err != nil {
 			return nil, fmt.Errorf("proofs production backend init: %w", err)
 		}
@@ -141,6 +182,23 @@ func buildProofProductionBackend() (proofs.ProductionBackend, error) {
 		return nil, fmt.Errorf("proofs production backend init: %w", err)
 	}
 	return backend, nil
+}
+
+func parseOptionalIntEnv(name string, def int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return def, nil
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s=%q", name, raw)
+	}
+	return v, nil
+}
+
+func parseBoolEnv(name string) bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
 func buildViewKeyManager(cfg RuntimeBackendConfig) *viewkeys.SimpleManager {

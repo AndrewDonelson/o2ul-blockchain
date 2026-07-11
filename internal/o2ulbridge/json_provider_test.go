@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -265,7 +267,19 @@ func TestInstallRuntimeBridgeFromEnvSupportsProofsProductionExternalFlavor(t *te
 	if err := os.WriteFile(path, []byte(`{"circuits":{"proof":"6b65792d31"}}`), 0o600); err != nil {
 		t.Fatalf("write circuit key file: %v", err)
 	}
+	provider := filepath.Join(t.TempDir(), "provider.sh")
+	providerScript := "#!/bin/sh\n" +
+		"input=$(cat)\n" +
+		"case \"$input\" in\n" +
+		"  *\\\"action\\\":\\\"prove\\\"*) echo '{\"ok\":true,\"proofHex\":\"70726f6f66\",\"publicInputsHex\":\"7769746e657373\"}' ;;\n" +
+		"  *\\\"action\\\":\\\"verify\\\"*) echo '{\"ok\":true}' ;;\n" +
+		"  *) echo '{\"ok\":false,\"error\":\"unknown action\"}' ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(provider, []byte(providerScript), 0o700); err != nil {
+		t.Fatalf("write provider script: %v", err)
+	}
 	t.Setenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON", path)
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_CMD", provider)
 
 	vm.SetO2ULRuntimeHookProvider(nil)
 	if err := InstallRuntimeBridgeFromEnv(); err != nil {
@@ -273,11 +287,15 @@ func TestInstallRuntimeBridgeFromEnvSupportsProofsProductionExternalFlavor(t *te
 	}
 	t.Cleanup(func() { vm.SetO2ULRuntimeHookProvider(nil) })
 
-	keys, err := proofs.LoadCircuitKeysFromJSON(path)
+	records, err := proofs.LoadCircuitKeyRecordsFromJSON(path)
 	if err != nil {
-		t.Fatalf("load circuit keys: %v", err)
+		t.Fatalf("load circuit key records: %v", err)
 	}
-	backend, err := proofs.NewExternalZKRegistryBackend(keys, 0, proofs.NewHashBackedExternalZKEngine("sim-external-zk-v1"))
+	engine, err := proofs.NewProcessExternalZKEngine(provider)
+	if err != nil {
+		t.Fatalf("new process external zk engine: %v", err)
+	}
+	backend, err := proofs.NewExternalZKRegistryBackendWithRecords(records, 0, engine)
 	if err != nil {
 		t.Fatalf("new external zk backend: %v", err)
 	}
@@ -309,6 +327,143 @@ func TestInstallRuntimeBridgeFromEnvSupportsProofsProductionExternalFlavor(t *te
 	}
 	if !resp.OK {
 		t.Fatal("expected successful proof verification with external production backend")
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvRejectsExternalFlavorWithoutProviderCommand(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "production")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_PROOFS_PRODUCTION_FLAVOR", "external")
+
+	path := filepath.Join(t.TempDir(), "proof-circuits.json")
+	if err := os.WriteFile(path, []byte(`{"circuits":{"proof":"6b65792d31"}}`), 0o600); err != nil {
+		t.Fatalf("write circuit key file: %v", err)
+	}
+	t.Setenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON", path)
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected external provider configuration required error")
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvSupportsProofsProductionExternalFlavorHTTPProvider(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "production")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_PROOFS_PRODUCTION_FLAVOR", "external")
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		if got := r.Header.Get("Authorization"); got != "Bearer token-123" {
+			http.Error(w, "missing auth", http.StatusUnauthorized)
+			return
+		}
+		var req map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req["action"] == "prove" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":              true,
+				"proofHex":        "70726f6f66",
+				"publicInputsHex": "7769746e657373",
+			})
+			return
+		}
+		if req["action"] == "verify" {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"ok": false, "error": "unknown action"})
+	}))
+	defer ts.Close()
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL", ts.URL)
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_AUTH_BEARER", "token-123")
+
+	path := filepath.Join(t.TempDir(), "proof-circuits.json")
+	if err := os.WriteFile(path, []byte(`{"circuits":{"proof":"6b65792d31"}}`), 0o600); err != nil {
+		t.Fatalf("write circuit key file: %v", err)
+	}
+	t.Setenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON", path)
+
+	vm.SetO2ULRuntimeHookProvider(nil)
+	if err := InstallRuntimeBridgeFromEnv(); err != nil {
+		t.Fatalf("install runtime bridge from env: %v", err)
+	}
+	t.Cleanup(func() { vm.SetO2ULRuntimeHookProvider(nil) })
+
+	records, err := proofs.LoadCircuitKeyRecordsFromJSON(path)
+	if err != nil {
+		t.Fatalf("load circuit key records: %v", err)
+	}
+	engine, err := proofs.NewHTTPExternalZKEngineWithConfig(proofs.HTTPExternalZKEngineConfig{
+		URL:             ts.URL,
+		AuthBearerToken: "token-123",
+	})
+	if err != nil {
+		t.Fatalf("new http external zk engine: %v", err)
+	}
+	backend, err := proofs.NewExternalZKRegistryBackendWithRecords(records, 0, engine)
+	if err != nil {
+		t.Fatalf("new external zk backend: %v", err)
+	}
+	proof, err := backend.Prove(protocol.CircuitID("proof"), protocol.Witness("witness"))
+	if err != nil {
+		t.Fatalf("prove: %v", err)
+	}
+	req, err := json.Marshal(pblockchain.ProofVerifyRequest{
+		Circuit:      protocol.CircuitID("proof"),
+		Proof:        proof,
+		PublicInputs: protocol.PublicInputs("witness"),
+	})
+	if err != nil {
+		t.Fatalf("marshal proof verify request: %v", err)
+	}
+	pc := vm.PrecompiledContractsPrague[vm.O2ULPrecompileProofVerify]
+	if pc == nil {
+		t.Fatal("expected proof verify precompile")
+	}
+	out, err := pc.Run(req)
+	if err != nil {
+		t.Fatalf("run proof verify precompile: %v", err)
+	}
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatal("expected successful proof verification with external http provider")
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvRejectsInvalidExternalHTTPNumericSettings(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "production")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_PROOFS_PRODUCTION_FLAVOR", "external")
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_URL", "http://example.invalid")
+	t.Setenv("O2UL_PROOFS_EXTERNAL_PROVIDER_TIMEOUT_MS", "bad")
+
+	path := filepath.Join(t.TempDir(), "proof-circuits.json")
+	if err := os.WriteFile(path, []byte(`{"circuits":{"proof":"6b65792d31"}}`), 0o600); err != nil {
+		t.Fatalf("write circuit key file: %v", err)
+	}
+	t.Setenv("O2UL_PROOFS_CIRCUIT_KEYS_JSON", path)
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid numeric env error")
 	}
 }
 
