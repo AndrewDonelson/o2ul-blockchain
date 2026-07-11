@@ -2128,10 +2128,19 @@ func TestGolangBindings(t *testing.T) {
 		t.Fatalf("failed to convert binding test to modules: %v\n%s", err, out)
 	}
 	pwd, _ := os.Getwd()
-	replacer := exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/ethereum/go-ethereum@v0.0.0", "-replace", "github.com/ethereum/go-ethereum="+filepath.Join(pwd, "..", "..", "..")) // Repo root
+	repoRoot := filepath.Join(pwd, "..", "..", "..")
+	replacer := exec.Command(gocmd, "mod", "edit", "-x", "-require", "github.com/ethereum/go-ethereum@v0.0.0", "-replace", "github.com/ethereum/go-ethereum="+repoRoot) // Repo root
 	replacer.Dir = pkg
 	if out, err := replacer.CombinedOutput(); err != nil {
 		t.Fatalf("failed to replace binding test dependency to current source tree: %v\n%s", err, out)
+	}
+	proprietaryRoot := filepath.Clean(filepath.Join(repoRoot, "..", "o2ul-proprietary"))
+	if common.FileExist(filepath.Join(proprietaryRoot, "go.mod")) {
+		o2ulReplacer := exec.Command(gocmd, "mod", "edit", "-x", "-replace", "github.com/AndrewDonelson/o2ul-proprietary="+proprietaryRoot)
+		o2ulReplacer.Dir = pkg
+		if out, err := o2ulReplacer.CombinedOutput(); err != nil {
+			t.Fatalf("failed to replace binding test proprietary dependency to local source tree: %v\n%s", err, out)
+		}
 	}
 	tidier := exec.Command(gocmd, "mod", "tidy")
 	tidier.Dir = pkg

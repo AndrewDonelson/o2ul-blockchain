@@ -9,6 +9,7 @@ package params
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/log"
@@ -58,9 +59,13 @@ func LogO2ULBanner() {
 }
 
 func LogO2ULDescription(c *ChainConfig) {
+	if c == nil {
+		return
+	}
+
 	var networkType string
 
-	switch c.ChainID.String() {
+	switch chainIDString(c.ChainID) {
 	case "20213":
 		networkType = "mainnet"
 	case "20214":
@@ -77,7 +82,7 @@ func LogO2ULDescription(c *ChainConfig) {
 	log.Info("╔═════════════════════════════════════════════════════════════════════════╗")
 	log.Info("║ Blockchain Information                                                  ║")
 	log.Info("╠═════════════════════════════════════════════════════════════════════════╣")
-	log.Info(fmt.Sprintf("║ Chain ID:     %-56d ║", c.ChainID.Int64()))
+	log.Info(fmt.Sprintf("║ Chain ID:     %-56d ║", chainIDInt64(c.ChainID)))
 	log.Info(fmt.Sprintf("║ Network:      %-56s ║", networkType))
 	log.Info(fmt.Sprintf("║ Consensus:    %-56s ║", "Proof-of-Stake with Continental AI Oracle"))
 	log.Info(fmt.Sprintf("║ Version:      %-56s ║", "v1.0.0"))
@@ -102,9 +107,13 @@ func LogO2ULDescription(c *ChainConfig) {
 
 // O2ULDescription returns a detailed description of the blockchain
 func O2ULDescription(c *ChainConfig) string {
+	if c == nil {
+		return ""
+	}
+
 	var networkType string
 
-	switch c.ChainID.String() {
+	switch chainIDString(c.ChainID) {
 	case "20213":
 		networkType = "mainnet"
 	case "20214":
@@ -144,7 +153,7 @@ func O2ULDescription(c *ChainConfig) string {
 %s`,
 		strings.Repeat("─", 73),
 		Bold, Reset,
-		Bold, Reset, c.ChainID.Int64(),
+		Bold, Reset, chainIDInt64(c.ChainID),
 		Bold, Reset, networkType,
 		Bold, Reset, "Proof-of-Stake with Continental AI Oracle",
 		Bold, Reset, "v1.0.0",
@@ -154,6 +163,20 @@ func O2ULDescription(c *ChainConfig) string {
 		strings.Repeat("─", 73))
 
 	return description
+}
+
+func chainIDString(chainID *big.Int) string {
+	if chainID == nil {
+		return ""
+	}
+	return chainID.String()
+}
+
+func chainIDInt64(chainID *big.Int) int64 {
+	if chainID == nil {
+		return 0
+	}
+	return chainID.Int64()
 }
 
 // OverrideChainConfigDescription overrides the original Description method
