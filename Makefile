@@ -20,7 +20,11 @@ GENESIS_FILE ?= ./config/genesis.json
 
 #? o2ul: Build o2ul.
 o2ul:
-	cd public && npm run build
+	@if [ -f public/package.json ]; then \
+		cd public && npm run build; \
+	else \
+		echo "Skipping frontend build: public/package.json not found"; \
+	fi
 	$(GORUN) build/ci.go install ./cmd/geth
 	@mv $(GOBIN)/geth $(GOBIN)/o2ul
 	@echo "Done building."
@@ -28,7 +32,11 @@ o2ul:
 
 #? all: Build all packages and executables.
 all:
-	cd public && npm run build
+	@if [ -f public/package.json ]; then \
+		cd public && npm run build; \
+	else \
+		echo "Skipping frontend build: public/package.json not found"; \
+	fi
 	$(GORUN) build/ci.go install
 	@if [ -f $(GOBIN)/geth ]; then mv $(GOBIN)/geth $(GOBIN)/o2ul; fi
 
