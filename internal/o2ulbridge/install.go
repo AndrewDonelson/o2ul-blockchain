@@ -1,6 +1,7 @@
 package o2ulbridge
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -186,10 +187,19 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 	if err != nil {
 		return nil, err
 	}
-	nftRegistry, nftOwnership := buildNFTAdapters(cfg)
-	viewKeyManager := buildViewKeyManager(cfg)
+	nftRegistry, nftOwnership, err := buildNFTAdapters(cfg)
+	if err != nil {
+		return nil, err
+	}
+	viewKeyManager, err := buildViewKeyManager(cfg)
+	if err != nil {
+		return nil, err
+	}
 
-	thresholdSigner := buildThresholdSigner(cfg)
+	thresholdSigner, err := buildThresholdSigner(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	return pblockchain.NewRuntimeBridge(pblockchain.RuntimeBridgeDeps{
 		Proofs:       proofSys,
@@ -302,27 +312,63 @@ func parseBoolEnv(name string) bool {
 	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
-func buildViewKeyManager(cfg RuntimeBackendConfig) *viewkeys.SimpleManager {
+func buildViewKeyManager(cfg RuntimeBackendConfig) (*viewkeys.SimpleManager, error) {
 	if cfg.ViewKeys == BackendModeProduction {
-		return viewkeys.NewSimpleManagerWithCipher(viewkeys.NewHashProductionDisclosureCipher())
+		keyHex := strings.TrimSpace(os.Getenv("O2UL_VIEWKEYS_DISCLOSURE_KEY_HEX"))
+		if keyHex == "" {
+			return viewkeys.NewSimpleManagerWithCipher(viewkeys.NewHashProductionDisclosureCipher()), nil
+		}
+		key, err := hex.DecodeString(keyHex)
+		if err != nil {
+			return nil, fmt.Errorf("viewkeys production backend init: invalid O2UL_VIEWKEYS_DISCLOSURE_KEY_HEX=%q", keyHex)
+		}
+		cipher, err := viewkeys.NewHashProductionDisclosureCipherWithKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("viewkeys production backend init: %w", err)
+		}
+		return viewkeys.NewSimpleManagerWithCipher(cipher), nil
 	}
-	return viewkeys.NewSimpleManager()
+	return viewkeys.NewSimpleManager(), nil
 }
 
-func buildThresholdSigner(cfg RuntimeBackendConfig) threshold.ThresholdSigner {
+func buildThresholdSigner(cfg RuntimeBackendConfig) (threshold.ThresholdSigner, error) {
 	if cfg.Threshold == BackendModeProduction {
-		return threshold.NewProductionSigner(threshold.NewHashProductionBackend())
+		keyHex := strings.TrimSpace(os.Getenv("O2UL_THRESHOLD_PRODUCTION_KEY_HEX"))
+		if keyHex == "" {
+			return threshold.NewProductionSigner(threshold.NewHashProductionBackend()), nil
+		}
+		key, err := hex.DecodeString(keyHex)
+		if err != nil {
+			return nil, fmt.Errorf("threshold production backend init: invalid O2UL_THRESHOLD_PRODUCTION_KEY_HEX=%q", keyHex)
+		}
+		backend, err := threshold.NewHashProductionBackendWithKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("threshold production backend init: %w", err)
+		}
+		return threshold.NewProductionSigner(backend), nil
 	}
-	return threshold.NewSimpleSigner()
+	return threshold.NewSimpleSigner(), nil
 }
 
-func buildNFTAdapters(cfg RuntimeBackendConfig) (*nft.InMemoryRegistry, nft.OwnershipVerifier) {
+func buildNFTAdapters(cfg RuntimeBackendConfig) (*nft.InMemoryRegistry, nft.OwnershipVerifier, error) {
 	if cfg.NFT == BackendModeProduction {
-		ownership := nft.NewHashProductionOwnershipVerifier()
-		return nft.NewInMemoryRegistryWithVerifier(ownership), ownership
+		keyHex := strings.TrimSpace(os.Getenv("O2UL_NFT_PROVENANCE_KEY_HEX"))
+		if keyHex == "" {
+			ownership := nft.NewHashProductionOwnershipVerifier()
+			return nft.NewInMemoryRegistryWithVerifier(ownership), ownership, nil
+		}
+		key, err := hex.DecodeString(keyHex)
+		if err != nil {
+			return nil, nil, fmt.Errorf("nft production backend init: invalid O2UL_NFT_PROVENANCE_KEY_HEX=%q", keyHex)
+		}
+		ownership, err := nft.NewProvenanceProductionOwnershipVerifierWithKey(key)
+		if err != nil {
+			return nil, nil, fmt.Errorf("nft production backend init: %w", err)
+		}
+		return nft.NewInMemoryRegistryWithVerifier(ownership), ownership, nil
 	}
 	ownership := nft.NewHashOwnershipVerifier()
-	return nft.NewInMemoryRegistryWithVerifier(ownership), ownership
+	return nft.NewInMemoryRegistryWithVerifier(ownership), ownership, nil
 }
 
 func buildShieldedPool(cfg RuntimeBackendConfig, nodeDataDir string) (*shielded.InMemoryPool, error) {

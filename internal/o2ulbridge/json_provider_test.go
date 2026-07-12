@@ -815,6 +815,20 @@ func TestInstallRuntimeBridgeFromEnvSupportsViewKeysProductionPath(t *testing.T)
 	}
 }
 
+func TestInstallRuntimeBridgeFromEnvRejectsInvalidViewKeysDisclosureKeyHex(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "production")
+	t.Setenv("O2UL_VIEWKEYS_DISCLOSURE_KEY_HEX", "bad-hex")
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid viewkeys disclosure key env error")
+	}
+}
+
 func TestInstallRuntimeBridgeFromEnvSupportsShieldedProductionPath(t *testing.T) {
 	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
 	t.Setenv("O2UL_BACKEND_SHIELDED", "production")
@@ -943,6 +957,111 @@ func TestInstallRuntimeBridgeFromEnvSupportsNFTProductionPath(t *testing.T) {
 	}
 }
 
+func TestInstallRuntimeBridgeFromEnvRejectsInvalidNFTProvenanceKeyHex(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "production")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_NFT_PROVENANCE_KEY_HEX", "bad-hex")
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid nft provenance key env error")
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvSupportsNFTProductionPathWithCustomProvenanceKey(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "production")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_NFT_PROVENANCE_KEY_HEX", "6b65792d637573746f6d")
+
+	vm.SetO2ULRuntimeHookProvider(nil)
+	if err := InstallRuntimeBridgeFromEnv(); err != nil {
+		t.Fatalf("install runtime bridge from env with nft production: %v", err)
+	}
+	t.Cleanup(func() { vm.SetO2ULRuntimeHookProvider(nil) })
+
+	creator := nft.OwnerFromSpendKey(protocol.PrivateKey("nft-owner"))
+	mintReq, err := json.Marshal(pblockchain.NFTMintRequest{
+		Creator:      creator,
+		MetadataHash: protocol.Hash("meta-a"),
+		Salt:         []byte("salt-a"),
+	})
+	if err != nil {
+		t.Fatalf("marshal nft mint request: %v", err)
+	}
+	mintPC := vm.PrecompiledContractsPrague[vm.O2ULPrecompileNFTMint]
+	if mintPC == nil {
+		t.Fatal("expected nft mint precompile")
+	}
+	mintOut, err := mintPC.Run(mintReq)
+	if err != nil {
+		t.Fatalf("run nft mint precompile: %v", err)
+	}
+	var mintResp struct {
+		Note protocol.Note `json:"note"`
+	}
+	if err := json.Unmarshal(mintOut, &mintResp); err != nil {
+		t.Fatalf("unmarshal nft mint response: %v", err)
+	}
+
+	defaultProof, err := nft.NewHashProductionOwnershipVerifier().CreateProof(mintResp.Note)
+	if err != nil {
+		t.Fatalf("create default ownership proof: %v", err)
+	}
+	verifyPC := vm.PrecompiledContractsPrague[vm.O2ULPrecompileNFTOwnershipVerify]
+	if verifyPC == nil {
+		t.Fatal("expected nft ownership verify precompile")
+	}
+	defaultVerifyReq, err := json.Marshal(pblockchain.NFTOwnershipVerifyRequest{Note: mintResp.Note, Proof: defaultProof})
+	if err != nil {
+		t.Fatalf("marshal default verify request: %v", err)
+	}
+	defaultVerifyOut, err := verifyPC.Run(defaultVerifyReq)
+	if err != nil {
+		t.Fatalf("run default verify precompile: %v", err)
+	}
+	var defaultVerifyResp struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(defaultVerifyOut, &defaultVerifyResp); err != nil {
+		t.Fatalf("unmarshal default verify response: %v", err)
+	}
+	if defaultVerifyResp.OK {
+		t.Fatal("expected default production verifier proof to fail when custom provenance key is configured")
+	}
+
+	customVerifier, err := nft.NewProvenanceProductionOwnershipVerifierWithKey([]byte("key-custom"))
+	if err != nil {
+		t.Fatalf("new custom provenance verifier: %v", err)
+	}
+	customProof, err := customVerifier.CreateProof(mintResp.Note)
+	if err != nil {
+		t.Fatalf("create custom ownership proof: %v", err)
+	}
+	customVerifyReq, err := json.Marshal(pblockchain.NFTOwnershipVerifyRequest{Note: mintResp.Note, Proof: customProof})
+	if err != nil {
+		t.Fatalf("marshal custom verify request: %v", err)
+	}
+	customVerifyOut, err := verifyPC.Run(customVerifyReq)
+	if err != nil {
+		t.Fatalf("run custom verify precompile: %v", err)
+	}
+	var customVerifyResp struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(customVerifyOut, &customVerifyResp); err != nil {
+		t.Fatalf("unmarshal custom verify response: %v", err)
+	}
+	if !customVerifyResp.OK {
+		t.Fatal("expected successful nft ownership verification with custom provenance key")
+	}
+}
+
 func TestInstallRuntimeBridgeFromEnvSupportsThresholdProductionPath(t *testing.T) {
 	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
 	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
@@ -1026,5 +1145,19 @@ func TestInstallRuntimeBridgeFromEnvSupportsThresholdProductionPath(t *testing.T
 	}
 	if len(aggResp.Signature) == 0 {
 		t.Fatal("expected non-empty threshold aggregate response")
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvRejectsInvalidThresholdProductionKeyHex(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "production")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_THRESHOLD_PRODUCTION_KEY_HEX", "bad-hex")
+
+	err := InstallRuntimeBridgeFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid threshold production key env error")
 	}
 }
