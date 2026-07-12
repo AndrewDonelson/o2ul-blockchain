@@ -12,6 +12,8 @@ package version
 import (
 	"fmt"
 	"time"
+
+	"github.com/ethereum/go-ethereum/internal/webui"
 )
 
 // Custom version constants for O²UL
@@ -32,6 +34,9 @@ func init() {
 func CustomVersionWithCommit(commit, date string) string {
 	now := time.Now().UTC()
 	version := FormatVersion(now, O2ULPhase, commit)
+	if label := webui.BuildLabel(); label != "frontend:unavailable" {
+		version = fmt.Sprintf("%s [%s]", version, label)
+	}
 	return version
 }
 

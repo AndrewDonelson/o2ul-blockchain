@@ -20,6 +20,7 @@ GENESIS_FILE ?= ./config/genesis.json
 
 #? o2ul: Build o2ul.
 o2ul:
+	cd public && npm run build
 	$(GORUN) build/ci.go install ./cmd/geth
 	@mv $(GOBIN)/geth $(GOBIN)/o2ul
 	@echo "Done building."
@@ -27,6 +28,7 @@ o2ul:
 
 #? all: Build all packages and executables.
 all:
+	cd public && npm run build
 	$(GORUN) build/ci.go install
 	@if [ -f $(GOBIN)/geth ]; then mv $(GOBIN)/geth $(GOBIN)/o2ul; fi
 
@@ -57,6 +59,7 @@ fmt:
 clean:
 	go clean -cache
 	rm -fr build/_workspace/pkg/ $(GOBIN)/*
+	rm -rf internal/webui/distapp
 
 # The devtools target installs tools required for 'go generate'.
 # You need to put $GOBIN (or $GOPATH/bin) in your PATH to use 'go generate'.

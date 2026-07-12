@@ -230,6 +230,8 @@ func init() {
 		consoleCommand,
 		attachCommand,
 		javascriptCommand,
+		// See webcmd.go:
+		webCommand,
 		// See misccmd.go:
 		versionCommand,
 		versionCheckCommand,
