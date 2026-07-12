@@ -36,6 +36,28 @@ func (fixedO2ULProvider) DiscloseViewKeyHook(input []byte) ([]byte, error) { ret
 func (fixedO2ULProvider) IsDisclosureReplayHook(input []byte) ([]byte, error) {
 	return []byte("ok"), nil
 }
+func (fixedO2ULProvider) AllocateFeeHook(input []byte) ([]byte, error) { return []byte("ok"), nil }
+func (fixedO2ULProvider) SelectArbitratorsHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) SubmitArbitrationEvidenceHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) RuleArbitrationHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) TriggerEscrowDisputeAndAllocateHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) SettleEscrowFromArbitrationHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) GetDisputeLifecycleStatusHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) GetDisputeLifecycleStatusesHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
 
 func TestO2ULPrecompilesRegisteredInCancunAndPrague(t *testing.T) {
 	addresses := []struct {
@@ -55,6 +77,14 @@ func TestO2ULPrecompilesRegisteredInCancunAndPrague(t *testing.T) {
 		{"viewkey generate", O2ULPrecompileViewKeyGenerate},
 		{"viewkey disclose", O2ULPrecompileViewKeyDisclose},
 		{"viewkey replay", O2ULPrecompileViewKeyReplayCheck},
+		{"fee allocate", O2ULPrecompileFeeAllocate},
+		{"arbitration select", O2ULPrecompileArbitrationSelect},
+		{"arbitration submit", O2ULPrecompileArbitrationSubmit},
+		{"arbitration rule", O2ULPrecompileArbitrationRule},
+		{"escrow dispute", O2ULPrecompileEscrowDispute},
+		{"escrow settle", O2ULPrecompileEscrowSettle},
+		{"dispute lifecycle status", O2ULPrecompileDisputeStatus},
+		{"batch dispute lifecycle status", O2ULPrecompileDisputeStatusBatch},
 	}
 	for _, a := range addresses {
 		if _, ok := PrecompiledContractsCancun[a.addr]; !ok {

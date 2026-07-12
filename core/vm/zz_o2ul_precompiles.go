@@ -29,6 +29,14 @@ var (
 	O2ULPrecompileViewKeyGenerate    = common.HexToAddress("0x000000000000000000000000000000000000010a")
 	O2ULPrecompileViewKeyDisclose    = common.HexToAddress("0x000000000000000000000000000000000000010b")
 	O2ULPrecompileViewKeyReplayCheck = common.HexToAddress("0x000000000000000000000000000000000000010c")
+	O2ULPrecompileFeeAllocate        = common.HexToAddress("0x000000000000000000000000000000000000010d")
+	O2ULPrecompileArbitrationSelect  = common.HexToAddress("0x000000000000000000000000000000000000010e")
+	O2ULPrecompileArbitrationSubmit  = common.HexToAddress("0x000000000000000000000000000000000000010f")
+	O2ULPrecompileArbitrationRule    = common.HexToAddress("0x0000000000000000000000000000000000000110")
+	O2ULPrecompileEscrowDispute      = common.HexToAddress("0x0000000000000000000000000000000000000111")
+	O2ULPrecompileEscrowSettle       = common.HexToAddress("0x0000000000000000000000000000000000000112")
+	O2ULPrecompileDisputeStatus      = common.HexToAddress("0x0000000000000000000000000000000000000113")
+	O2ULPrecompileDisputeStatusBatch = common.HexToAddress("0x0000000000000000000000000000000000000114")
 )
 
 // O2ULRuntimeHookProvider provides the runtime hook entrypoints invoked by O2UL precompiles.
@@ -47,6 +55,14 @@ type O2ULRuntimeHookProvider interface {
 	GenerateViewKeyHook(input []byte) ([]byte, error)
 	DiscloseViewKeyHook(input []byte) ([]byte, error)
 	IsDisclosureReplayHook(input []byte) ([]byte, error)
+	AllocateFeeHook(input []byte) ([]byte, error)
+	SelectArbitratorsHook(input []byte) ([]byte, error)
+	SubmitArbitrationEvidenceHook(input []byte) ([]byte, error)
+	RuleArbitrationHook(input []byte) ([]byte, error)
+	TriggerEscrowDisputeAndAllocateHook(input []byte) ([]byte, error)
+	SettleEscrowFromArbitrationHook(input []byte) ([]byte, error)
+	GetDisputeLifecycleStatusHook(input []byte) ([]byte, error)
+	GetDisputeLifecycleStatusesHook(input []byte) ([]byte, error)
 }
 
 var o2ulRuntimeHooks O2ULRuntimeHookProvider
@@ -113,6 +129,30 @@ func registerO2ULPrecompiles(target PrecompiledContracts) {
 	}}
 	target[O2ULPrecompileViewKeyReplayCheck] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
 		return provider.IsDisclosureReplayHook(input)
+	}}
+	target[O2ULPrecompileFeeAllocate] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.AllocateFeeHook(input)
+	}}
+	target[O2ULPrecompileArbitrationSelect] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.SelectArbitratorsHook(input)
+	}}
+	target[O2ULPrecompileArbitrationSubmit] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.SubmitArbitrationEvidenceHook(input)
+	}}
+	target[O2ULPrecompileArbitrationRule] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.RuleArbitrationHook(input)
+	}}
+	target[O2ULPrecompileEscrowDispute] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.TriggerEscrowDisputeAndAllocateHook(input)
+	}}
+	target[O2ULPrecompileEscrowSettle] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.SettleEscrowFromArbitrationHook(input)
+	}}
+	target[O2ULPrecompileDisputeStatus] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.GetDisputeLifecycleStatusHook(input)
+	}}
+	target[O2ULPrecompileDisputeStatusBatch] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.GetDisputeLifecycleStatusesHook(input)
 	}}
 }
 
