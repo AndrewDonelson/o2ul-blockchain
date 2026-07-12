@@ -1,0 +1,12 @@
+[
+  {
+    "type": "function",
+    "name": "isAuthorizedCaller",
+    "stateMutability": "view",
+    "inputs": [
+      {"name": "role", "type": "bytes32"},
+      {"name": "account", "type": "address"}
+    ],
+    "outputs": [{"name": "", "type": "bool"}]
+  }
+]

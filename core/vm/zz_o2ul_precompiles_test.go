@@ -37,6 +37,12 @@ func (fixedO2ULProvider) IsDisclosureReplayHook(input []byte) ([]byte, error) {
 	return []byte("ok"), nil
 }
 func (fixedO2ULProvider) AllocateFeeHook(input []byte) ([]byte, error) { return []byte("ok"), nil }
+func (fixedO2ULProvider) ConfigureFeeDistributionSplitHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
+func (fixedO2ULProvider) GetFeeDistributionSplitHook(input []byte) ([]byte, error) {
+	return []byte("ok"), nil
+}
 func (fixedO2ULProvider) SelectArbitratorsHook(input []byte) ([]byte, error) {
 	return []byte("ok"), nil
 }
@@ -78,6 +84,8 @@ func TestO2ULPrecompilesRegisteredInCancunAndPrague(t *testing.T) {
 		{"viewkey disclose", O2ULPrecompileViewKeyDisclose},
 		{"viewkey replay", O2ULPrecompileViewKeyReplayCheck},
 		{"fee allocate", O2ULPrecompileFeeAllocate},
+		{"fee configure split", O2ULPrecompileFeeConfigureSplit},
+		{"fee get split", O2ULPrecompileFeeGetSplit},
 		{"arbitration select", O2ULPrecompileArbitrationSelect},
 		{"arbitration submit", O2ULPrecompileArbitrationSubmit},
 		{"arbitration rule", O2ULPrecompileArbitrationRule},

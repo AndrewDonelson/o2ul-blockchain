@@ -320,6 +320,61 @@ func TestJSONRuntimeProviderAllocateFeeHookRequiresFeeAdapter(t *testing.T) {
 	}
 }
 
+func TestJSONRuntimeProviderFeeDistributionSplitHooks(t *testing.T) {
+	provider := NewJSONRuntimeHookProvider(newFeeTestRuntimeBridge(t))
+
+	configureReq, err := json.Marshal(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+		ProversValidatorsBps: 4500,
+		ArbitratorPoolBps:    2500,
+		DevTreasuryBps:       2500,
+		BurnBps:              500,
+	}})
+	if err != nil {
+		t.Fatalf("marshal fee split configure request: %v", err)
+	}
+	configureOut, err := provider.ConfigureFeeDistributionSplitHook(configureReq)
+	if err != nil {
+		t.Fatalf("configure fee split hook: %v", err)
+	}
+	var configureResp struct {
+		Split fees.DistributionSplit `json:"split"`
+	}
+	if err := json.Unmarshal(configureOut, &configureResp); err != nil {
+		t.Fatalf("unmarshal fee split configure response: %v", err)
+	}
+	if configureResp.Split.ProversValidatorsBps != 4500 || configureResp.Split.ArbitratorPoolBps != 2500 || configureResp.Split.DevTreasuryBps != 2500 || configureResp.Split.BurnBps != 500 {
+		t.Fatalf("unexpected configured split response: %+v", configureResp.Split)
+	}
+
+	getOut, err := provider.GetFeeDistributionSplitHook(nil)
+	if err != nil {
+		t.Fatalf("get fee split hook: %v", err)
+	}
+	var getResp struct {
+		Split fees.DistributionSplit `json:"split"`
+	}
+	if err := json.Unmarshal(getOut, &getResp); err != nil {
+		t.Fatalf("unmarshal fee split get response: %v", err)
+	}
+	if getResp.Split != configureResp.Split {
+		t.Fatalf("fee split mismatch: configure=%+v get=%+v", configureResp.Split, getResp.Split)
+	}
+
+	invalidReq, err := json.Marshal(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+		ProversValidatorsBps: 4000,
+		ArbitratorPoolBps:    2500,
+		DevTreasuryBps:       3000,
+		BurnBps:              400,
+	}})
+	if err != nil {
+		t.Fatalf("marshal invalid fee split configure request: %v", err)
+	}
+	_, err = provider.ConfigureFeeDistributionSplitHook(invalidReq)
+	if !errors.Is(err, fees.ErrDistributionSplitMustTotal10000) {
+		t.Fatalf("expected split-total sentinel error, got %v", err)
+	}
+}
+
 func TestJSONRuntimeProviderTriggerEscrowDisputeAndAllocateHook(t *testing.T) {
 	provider := NewJSONRuntimeHookProvider(newDisputeFlowRuntimeBridge(t))
 	req, err := json.Marshal(pblockchain.EscrowTriggerDisputeAndAllocateRequest{

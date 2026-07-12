@@ -37,6 +37,8 @@ var (
 	O2ULPrecompileEscrowSettle       = common.HexToAddress("0x0000000000000000000000000000000000000112")
 	O2ULPrecompileDisputeStatus      = common.HexToAddress("0x0000000000000000000000000000000000000113")
 	O2ULPrecompileDisputeStatusBatch = common.HexToAddress("0x0000000000000000000000000000000000000114")
+	O2ULPrecompileFeeConfigureSplit  = common.HexToAddress("0x0000000000000000000000000000000000000115")
+	O2ULPrecompileFeeGetSplit        = common.HexToAddress("0x0000000000000000000000000000000000000116")
 )
 
 // O2ULRuntimeHookProvider provides the runtime hook entrypoints invoked by O2UL precompiles.
@@ -56,6 +58,8 @@ type O2ULRuntimeHookProvider interface {
 	DiscloseViewKeyHook(input []byte) ([]byte, error)
 	IsDisclosureReplayHook(input []byte) ([]byte, error)
 	AllocateFeeHook(input []byte) ([]byte, error)
+	ConfigureFeeDistributionSplitHook(input []byte) ([]byte, error)
+	GetFeeDistributionSplitHook(input []byte) ([]byte, error)
 	SelectArbitratorsHook(input []byte) ([]byte, error)
 	SubmitArbitrationEvidenceHook(input []byte) ([]byte, error)
 	RuleArbitrationHook(input []byte) ([]byte, error)
@@ -132,6 +136,12 @@ func registerO2ULPrecompiles(target PrecompiledContracts) {
 	}}
 	target[O2ULPrecompileFeeAllocate] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
 		return provider.AllocateFeeHook(input)
+	}}
+	target[O2ULPrecompileFeeConfigureSplit] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.ConfigureFeeDistributionSplitHook(input)
+	}}
+	target[O2ULPrecompileFeeGetSplit] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
+		return provider.GetFeeDistributionSplitHook(input)
 	}}
 	target[O2ULPrecompileArbitrationSelect] = &o2ulHookPrecompile{run: func(provider O2ULRuntimeHookProvider, input []byte) ([]byte, error) {
 		return provider.SelectArbitratorsHook(input)

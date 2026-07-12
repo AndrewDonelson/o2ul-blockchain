@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	pblockchain "github.com/AndrewDonelson/o2ul-proprietary/pkg/blockchain"
+	"github.com/AndrewDonelson/o2ul-proprietary/pkg/fees"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/protocol"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -699,6 +700,22 @@ func TestPrecompileContractOrchestratorNonFlowDiagnosticsWrappersCategories(t *t
 		t.Fatalf("expected allocate fee configuration category, got %q", allocOut.Diagnostics.NormalizedErrorCategory)
 	}
 
+	configureOut, err := nilOrch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+	if err == nil {
+		t.Fatal("expected configure fee split config failure")
+	}
+	if configureOut.Diagnostics.NormalizedErrorCategory != OrchestrationErrorCategoryConfiguration {
+		t.Fatalf("expected configure fee split configuration category, got %q", configureOut.Diagnostics.NormalizedErrorCategory)
+	}
+
+	getSplitOut, err := nilOrch.GetFeeDistributionSplitWithDiagnostics()
+	if err == nil {
+		t.Fatal("expected get fee split config failure")
+	}
+	if getSplitOut.Diagnostics.NormalizedErrorCategory != OrchestrationErrorCategoryConfiguration {
+		t.Fatalf("expected get fee split configuration category, got %q", getSplitOut.Diagnostics.NormalizedErrorCategory)
+	}
+
 	evidenceOut, err := nilOrch.SubmitArbitrationEvidenceWithDiagnostics(pblockchain.ArbitrationSubmitEvidenceRequest{DisputeID: "d", EvidenceRef: protocol.Hash("ev"), ViewKey: protocol.EncryptedViewKey("vk")})
 	if err == nil {
 		t.Fatal("expected evidence config failure")
@@ -777,6 +794,44 @@ func TestPrecompileContractOrchestratorNonFlowLegacyWrapperParity(t *testing.T) 
 			expectedSuccess:    true,
 		},
 		{
+			name: "configure_fee_split_success",
+			legacy: func() (any, error) {
+				return orch.ConfigureFeeDistributionSplit(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+					ProversValidatorsBps: 4500,
+					ArbitratorPoolBps:    2500,
+					DevTreasuryBps:       2500,
+					BurnBps:              500,
+				}})
+			},
+			wrapper: func() (any, OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+					ProversValidatorsBps: 4500,
+					ArbitratorPoolBps:    2500,
+					DevTreasuryBps:       2500,
+					BurnBps:              500,
+				}})
+				return out.Split, out.Diagnostics, err
+			},
+			expectedNormalized: OrchestrationErrorCategoryNone,
+			expectedStep:       "configure_fee_distribution_split",
+			expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(),
+			expectedSuccess:    true,
+		},
+		{
+			name: "get_fee_split_success",
+			legacy: func() (any, error) {
+				return orch.GetFeeDistributionSplit()
+			},
+			wrapper: func() (any, OrchestrationDiagnostics, error) {
+				out, err := orch.GetFeeDistributionSplitWithDiagnostics()
+				return out.Split, out.Diagnostics, err
+			},
+			expectedNormalized: OrchestrationErrorCategoryNone,
+			expectedStep:       "get_fee_distribution_split",
+			expectedPrecompile: vm.O2ULPrecompileFeeGetSplit.Hex(),
+			expectedSuccess:    true,
+		},
+		{
 			name: "batch_status_success",
 			legacy: func() (any, error) {
 				return orch.GetBatchDisputeStatuses(batchReq)
@@ -825,6 +880,35 @@ func TestPrecompileContractOrchestratorNonFlowLegacyWrapperParity(t *testing.T) 
 			expectedErrorCategory: OrchestrationErrorCategoryValidation,
 		},
 		{
+			name: "configure_fee_split_validation_error_identity",
+			legacy: func() (any, error) {
+				return nil, func() error {
+					_, err := orch.ConfigureFeeDistributionSplit(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+						ProversValidatorsBps: 4000,
+						ArbitratorPoolBps:    2500,
+						DevTreasuryBps:       3000,
+						BurnBps:              400,
+					}})
+					return err
+				}()
+			},
+			wrapper: func() (any, OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+					ProversValidatorsBps: 4000,
+					ArbitratorPoolBps:    2500,
+					DevTreasuryBps:       3000,
+					BurnBps:              400,
+				}})
+				return nil, out.Diagnostics, err
+			},
+			expectedErr:           ErrOrchestrationValidation,
+			expectedNormalized:    OrchestrationErrorCategoryValidation,
+			expectedStep:          "configure_fee_distribution_split",
+			expectedPrecompile:    vm.O2ULPrecompileFeeConfigureSplit.Hex(),
+			expectedSuccess:       false,
+			expectedErrorCategory: OrchestrationErrorCategoryValidation,
+		},
+		{
 			name: "allocate_fee_configuration_error_identity",
 			legacy: func() (any, error) {
 				return nil, func() error {
@@ -843,6 +927,44 @@ func TestPrecompileContractOrchestratorNonFlowLegacyWrapperParity(t *testing.T) 
 			expectedSuccess:       false,
 			expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
 		},
+		{
+			name: "configure_fee_split_configuration_error_identity",
+			legacy: func() (any, error) {
+				return nil, func() error {
+					_, err := nilOrch.ConfigureFeeDistributionSplit(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+					return err
+				}()
+			},
+			wrapper: func() (any, OrchestrationDiagnostics, error) {
+				out, err := nilOrch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+				return nil, out.Diagnostics, err
+			},
+			expectedErr:           ErrOrchestrationPrecompileSetNotConfigured,
+			expectedNormalized:    OrchestrationErrorCategoryConfiguration,
+			expectedStep:          "configure_fee_distribution_split",
+			expectedPrecompile:    vm.O2ULPrecompileFeeConfigureSplit.Hex(),
+			expectedSuccess:       false,
+			expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
+		},
+		{
+			name: "get_fee_split_configuration_error_identity",
+			legacy: func() (any, error) {
+				return nil, func() error {
+					_, err := nilOrch.GetFeeDistributionSplit()
+					return err
+				}()
+			},
+			wrapper: func() (any, OrchestrationDiagnostics, error) {
+				out, err := nilOrch.GetFeeDistributionSplitWithDiagnostics()
+				return nil, out.Diagnostics, err
+			},
+			expectedErr:           ErrOrchestrationPrecompileSetNotConfigured,
+			expectedNormalized:    OrchestrationErrorCategoryConfiguration,
+			expectedStep:          "get_fee_distribution_split",
+			expectedPrecompile:    vm.O2ULPrecompileFeeGetSplit.Hex(),
+			expectedSuccess:       false,
+			expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
+		},
 	})
 }
 
@@ -858,6 +980,24 @@ func TestPrecompileContractOrchestratorNonFlowWrapperPrecompileMissingRoutes(t *
 			},
 			expectedErr: ErrOrchestrationPrecompileMissing, expectedNormalized: OrchestrationErrorCategoryPrecompileMiss,
 			expectedStep: "allocate_fee", expectedPrecompile: vm.O2ULPrecompileFeeAllocate.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryPrecompileMiss,
+		},
+		{
+			name: "configure_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationPrecompileMissing, expectedNormalized: OrchestrationErrorCategoryPrecompileMiss,
+			expectedStep: "configure_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryPrecompileMiss,
+		},
+		{
+			name: "get_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.GetFeeDistributionSplitWithDiagnostics()
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationPrecompileMissing, expectedNormalized: OrchestrationErrorCategoryPrecompileMiss,
+			expectedStep: "get_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeGetSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryPrecompileMiss,
 		},
 		{
 			name: "submit_arbitration_evidence",
@@ -883,6 +1023,8 @@ func TestPrecompileContractOrchestratorNonFlowWrapperPrecompileMissingRoutes(t *
 func TestPrecompileContractOrchestratorNonFlowWrapperResponseDecodeRoutes(t *testing.T) {
 	orch := NewPrecompileContractOrchestrator(vm.PrecompiledContracts{
 		vm.O2ULPrecompileFeeAllocate:        fixedTestPrecompile{output: []byte("{")},
+		vm.O2ULPrecompileFeeConfigureSplit:  fixedTestPrecompile{output: []byte("{")},
+		vm.O2ULPrecompileFeeGetSplit:        fixedTestPrecompile{output: []byte("{")},
 		vm.O2ULPrecompileDisputeStatusBatch: fixedTestPrecompile{output: []byte("{")},
 	})
 
@@ -895,6 +1037,24 @@ func TestPrecompileContractOrchestratorNonFlowWrapperResponseDecodeRoutes(t *tes
 			},
 			expectedErr: ErrOrchestrationResponseDecode, expectedNormalized: OrchestrationErrorCategoryResponseDecode,
 			expectedStep: "allocate_fee", expectedPrecompile: vm.O2ULPrecompileFeeAllocate.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryResponseDecode,
+		},
+		{
+			name: "configure_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationResponseDecode, expectedNormalized: OrchestrationErrorCategoryResponseDecode,
+			expectedStep: "configure_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryResponseDecode,
+		},
+		{
+			name: "get_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.GetFeeDistributionSplitWithDiagnostics()
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationResponseDecode, expectedNormalized: OrchestrationErrorCategoryResponseDecode,
+			expectedStep: "get_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeGetSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryResponseDecode,
 		},
 		{
 			name: "get_batch_dispute_statuses",
@@ -922,6 +1082,20 @@ func TestPrecompileContractOrchestratorNonFlowWrapperValidationStepShape(t *test
 			expectedStep: "allocate_fee", expectedPrecompile: vm.O2ULPrecompileFeeAllocate.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryValidation,
 		},
 		{
+			name: "configure_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+					ProversValidatorsBps: 4000,
+					ArbitratorPoolBps:    2500,
+					DevTreasuryBps:       3000,
+					BurnBps:              400,
+				}})
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationValidation, expectedNormalized: OrchestrationErrorCategoryValidation,
+			expectedStep: "configure_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryValidation,
+		},
+		{
 			name: "submit_arbitration_evidence",
 			invoke: func() (OrchestrationDiagnostics, error) {
 				out, err := orch.SubmitArbitrationEvidenceWithDiagnostics(pblockchain.ArbitrationSubmitEvidenceRequest{DisputeID: "", EvidenceRef: protocol.Hash("ev"), ViewKey: protocol.EncryptedViewKey("vk")})
@@ -945,6 +1119,24 @@ func TestPrecompileContractOrchestratorNonFlowWrapperConfigurationStepShape(t *t
 			},
 			expectedErr: ErrOrchestrationPrecompileSetNotConfigured, expectedNormalized: OrchestrationErrorCategoryConfiguration,
 			expectedStep: "allocate_fee", expectedPrecompile: vm.O2ULPrecompileFeeAllocate.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
+		},
+		{
+			name: "configure_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := nilOrch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DefaultDistributionSplit()})
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationPrecompileSetNotConfigured, expectedNormalized: OrchestrationErrorCategoryConfiguration,
+			expectedStep: "configure_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
+		},
+		{
+			name: "get_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := nilOrch.GetFeeDistributionSplitWithDiagnostics()
+				return out.Diagnostics, err
+			},
+			expectedErr: ErrOrchestrationPrecompileSetNotConfigured, expectedNormalized: OrchestrationErrorCategoryConfiguration,
+			expectedStep: "get_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeGetSplit.Hex(), expectedSuccess: false, expectedErrorCategory: OrchestrationErrorCategoryConfiguration,
 		},
 		{
 			name: "submit_arbitration_evidence",
@@ -1002,6 +1194,29 @@ func TestPrecompileContractOrchestratorNonFlowWrapperSuccessStepShape(t *testing
 			},
 			expectedErr: nil, expectedNormalized: OrchestrationErrorCategoryNone,
 			expectedStep: "allocate_fee", expectedPrecompile: vm.O2ULPrecompileFeeAllocate.Hex(), expectedSuccess: true, expectedErrorCategory: "",
+		},
+		{
+			name: "configure_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(pblockchain.ConfigureFeeDistributionSplitRequest{Split: fees.DistributionSplit{
+					ProversValidatorsBps: 4500,
+					ArbitratorPoolBps:    2500,
+					DevTreasuryBps:       2500,
+					BurnBps:              500,
+				}})
+				return out.Diagnostics, err
+			},
+			expectedErr: nil, expectedNormalized: OrchestrationErrorCategoryNone,
+			expectedStep: "configure_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeConfigureSplit.Hex(), expectedSuccess: true, expectedErrorCategory: "",
+		},
+		{
+			name: "get_fee_distribution_split",
+			invoke: func() (OrchestrationDiagnostics, error) {
+				out, err := orch.GetFeeDistributionSplitWithDiagnostics()
+				return out.Diagnostics, err
+			},
+			expectedErr: nil, expectedNormalized: OrchestrationErrorCategoryNone,
+			expectedStep: "get_fee_distribution_split", expectedPrecompile: vm.O2ULPrecompileFeeGetSplit.Hex(), expectedSuccess: true, expectedErrorCategory: "",
 		},
 		{
 			name: "submit_arbitration_evidence",

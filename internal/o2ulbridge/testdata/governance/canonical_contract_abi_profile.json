@@ -1,0 +1,10 @@
+{
+  "governorAbiPath": "governor_access_control_artifact.json",
+  "timelockAbiPath": "timelock_controller_artifact.json",
+  "governorMethod": "isAuthorizedCaller",
+  "timelockMethod": "isReadyOperation",
+  "operationIdMode": "keccak_utf8",
+  "governorAddress": "0x0000000000000000000000000000000000001007",
+  "timelockAddress": "0x0000000000000000000000000000000000001008",
+  "executorRole": "EXECUTOR_ROLE"
+}

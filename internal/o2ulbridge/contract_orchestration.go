@@ -67,6 +67,16 @@ type AllocateFeeOrchestrationResult struct {
 	Diagnostics  OrchestrationDiagnostics
 }
 
+type ConfigureFeeDistributionSplitOrchestrationResult struct {
+	Split       fees.DistributionSplit
+	Diagnostics OrchestrationDiagnostics
+}
+
+type GetFeeDistributionSplitOrchestrationResult struct {
+	Split       fees.DistributionSplit
+	Diagnostics OrchestrationDiagnostics
+}
+
 type SubmitArbitrationEvidenceOrchestrationResult struct {
 	Diagnostics OrchestrationDiagnostics
 }
@@ -82,6 +92,14 @@ type ContractOrchestrator interface {
 	// Example: res, err := orch.AllocateFeeWithDiagnostics(req); category := res.Diagnostics.NormalizedErrorCategory
 	AllocateFee(req pblockchain.AllocateFeeRequest) (fees.FeeDistribution, error)
 	AllocateFeeWithDiagnostics(req pblockchain.AllocateFeeRequest) (AllocateFeeOrchestrationResult, error)
+	// Legacy method preserved for compatibility; deployment tooling should prefer ConfigureFeeDistributionSplitWithDiagnostics.
+	// Example: res, err := orch.ConfigureFeeDistributionSplitWithDiagnostics(req); split := res.Split
+	ConfigureFeeDistributionSplit(req pblockchain.ConfigureFeeDistributionSplitRequest) (fees.DistributionSplit, error)
+	ConfigureFeeDistributionSplitWithDiagnostics(req pblockchain.ConfigureFeeDistributionSplitRequest) (ConfigureFeeDistributionSplitOrchestrationResult, error)
+	// Legacy method preserved for compatibility; deployment tooling should prefer GetFeeDistributionSplitWithDiagnostics.
+	// Example: res, err := orch.GetFeeDistributionSplitWithDiagnostics(); split := res.Split
+	GetFeeDistributionSplit() (fees.DistributionSplit, error)
+	GetFeeDistributionSplitWithDiagnostics() (GetFeeDistributionSplitOrchestrationResult, error)
 	// Legacy method preserved for compatibility; deployment tooling should prefer SubmitArbitrationEvidenceWithDiagnostics.
 	// Example: res, err := orch.SubmitArbitrationEvidenceWithDiagnostics(req); trace := res.Diagnostics.StepTraces
 	SubmitArbitrationEvidence(req pblockchain.ArbitrationSubmitEvidenceRequest) error
@@ -299,6 +317,91 @@ func (o *PrecompileContractOrchestrator) AllocateFeeWithDiagnostics(req pblockch
 	}, nil
 }
 
+func (o *PrecompileContractOrchestrator) ConfigureFeeDistributionSplit(req pblockchain.ConfigureFeeDistributionSplitRequest) (fees.DistributionSplit, error) {
+	out, err := o.ConfigureFeeDistributionSplitWithDiagnostics(req)
+	if err != nil {
+		return fees.DistributionSplit{}, err
+	}
+	return out.Split, nil
+}
+
+func (o *PrecompileContractOrchestrator) ConfigureFeeDistributionSplitWithDiagnostics(req pblockchain.ConfigureFeeDistributionSplitRequest) (ConfigureFeeDistributionSplitOrchestrationResult, error) {
+	step := OrchestrationStepTrace{Step: "configure_fee_distribution_split", Precompile: vm.O2ULPrecompileFeeConfigureSplit.Hex()}
+	if o == nil || o.precompiles == nil {
+		step.ErrorCategory = OrchestrationErrorCategoryConfiguration
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, ErrOrchestrationPrecompileSetNotConfigured)}, ErrOrchestrationPrecompileSetNotConfigured
+	}
+	if err := validateDistributionSplit(req.Split); err != nil {
+		step.ErrorCategory = OrchestrationErrorCategoryValidation
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	input, err := json.Marshal(req)
+	if err != nil {
+		step.ErrorCategory = normalizeOrchestrationError(err)
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	out, err := o.runPrecompile(vm.O2ULPrecompileFeeConfigureSplit, input)
+	if err != nil {
+		step.ErrorCategory = normalizeOrchestrationError(err)
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	var resp struct {
+		Split fees.DistributionSplit `json:"split"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		decodeErr := fmt.Errorf("%w: %v", ErrOrchestrationResponseDecode, err)
+		step.ErrorCategory = OrchestrationErrorCategoryResponseDecode
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, decodeErr)}, decodeErr
+	}
+	if err := validateDistributionSplitShape(resp.Split); err != nil {
+		step.ErrorCategory = OrchestrationErrorCategoryResponseShape
+		return ConfigureFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	step.Success = true
+	return ConfigureFeeDistributionSplitOrchestrationResult{
+		Split:       resp.Split,
+		Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, nil),
+	}, nil
+}
+
+func (o *PrecompileContractOrchestrator) GetFeeDistributionSplit() (fees.DistributionSplit, error) {
+	out, err := o.GetFeeDistributionSplitWithDiagnostics()
+	if err != nil {
+		return fees.DistributionSplit{}, err
+	}
+	return out.Split, nil
+}
+
+func (o *PrecompileContractOrchestrator) GetFeeDistributionSplitWithDiagnostics() (GetFeeDistributionSplitOrchestrationResult, error) {
+	step := OrchestrationStepTrace{Step: "get_fee_distribution_split", Precompile: vm.O2ULPrecompileFeeGetSplit.Hex()}
+	if o == nil || o.precompiles == nil {
+		step.ErrorCategory = OrchestrationErrorCategoryConfiguration
+		return GetFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, ErrOrchestrationPrecompileSetNotConfigured)}, ErrOrchestrationPrecompileSetNotConfigured
+	}
+	out, err := o.runPrecompile(vm.O2ULPrecompileFeeGetSplit, nil)
+	if err != nil {
+		step.ErrorCategory = normalizeOrchestrationError(err)
+		return GetFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	var resp struct {
+		Split fees.DistributionSplit `json:"split"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		decodeErr := fmt.Errorf("%w: %v", ErrOrchestrationResponseDecode, err)
+		step.ErrorCategory = OrchestrationErrorCategoryResponseDecode
+		return GetFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, decodeErr)}, decodeErr
+	}
+	if err := validateDistributionSplitShape(resp.Split); err != nil {
+		step.ErrorCategory = OrchestrationErrorCategoryResponseShape
+		return GetFeeDistributionSplitOrchestrationResult{Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, err)}, err
+	}
+	step.Success = true
+	return GetFeeDistributionSplitOrchestrationResult{
+		Split:       resp.Split,
+		Diagnostics: orchestrationDiagnostics([]OrchestrationStepTrace{step}, nil),
+	}, nil
+}
+
 func (o *PrecompileContractOrchestrator) SubmitArbitrationEvidence(req pblockchain.ArbitrationSubmitEvidenceRequest) error {
 	out, err := o.SubmitArbitrationEvidenceWithDiagnostics(req)
 	if err != nil {
@@ -455,4 +558,22 @@ func normalizeOrchestrationError(err error) string {
 		return OrchestrationErrorCategoryResponseShape
 	}
 	return OrchestrationErrorCategoryExecution
+}
+
+func validateDistributionSplit(split fees.DistributionSplit) error {
+	if split.ProversValidatorsBps < 0 || split.ArbitratorPoolBps < 0 || split.DevTreasuryBps < 0 || split.BurnBps < 0 {
+		return fmt.Errorf("%w: split basis points must be non-negative", ErrOrchestrationValidation)
+	}
+	total := split.ProversValidatorsBps + split.ArbitratorPoolBps + split.DevTreasuryBps + split.BurnBps
+	if total != 10000 {
+		return fmt.Errorf("%w: split basis points must total 10000, got %d", ErrOrchestrationValidation, total)
+	}
+	return nil
+}
+
+func validateDistributionSplitShape(split fees.DistributionSplit) error {
+	if err := validateDistributionSplit(split); err != nil {
+		return fmt.Errorf("%w: %v", ErrOrchestrationResponseShape, err)
+	}
+	return nil
 }

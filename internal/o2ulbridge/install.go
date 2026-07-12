@@ -2,6 +2,7 @@ package o2ulbridge
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	pblockchain "github.com/AndrewDonelson/o2ul-proprietary/pkg/blockchain"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/consensus"
+	"github.com/AndrewDonelson/o2ul-proprietary/pkg/fees"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/nft"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/proofs"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/protocol"
@@ -289,6 +291,12 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 		}
 	}
 
+	feeLedger := fees.NewInMemoryDistributionLedger()
+	governanceAuthorizer, err := buildFeeSplitGovernanceAuthorizerFromEnv(cfg, nodeDataDir)
+	if err != nil {
+		return nil, err
+	}
+
 	return pblockchain.NewRuntimeBridge(pblockchain.RuntimeBridgeDeps{
 		Proofs:       proofSys,
 		Shielded:     shieldedPool,
@@ -297,7 +305,234 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 		Threshold:    thresholdSigner,
 		ViewKeys:     viewKeyManager,
 		Consensus:    consensusAdapter,
+		Fees:         feeLedger,
+		Governance:   governanceAuthorizer,
 	})
+}
+
+func buildFeeSplitGovernanceAuthorizerFromEnv(cfg RuntimeBackendConfig, nodeDataDir string) (pblockchain.FeeSplitGovernanceAuthorizer, error) {
+	required := runtimeBridgeUsesProductionBackends(cfg)
+	if raw := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRED")); raw != "" {
+		required = parseBoolEnv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRED")
+	}
+	if !required {
+		return nil, nil
+	}
+
+	source := strings.TrimSpace(strings.ToLower(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_POLICY_SOURCE")))
+	if source == "" {
+		source = "contract_abi"
+	}
+	if source == "contract_abi" {
+		if shouldRequireGovernanceArtifactProfile(cfg, source) {
+			if err := validateGovernanceArtifactProfilePath(); err != nil {
+				return nil, fmt.Errorf("fee split governance init: %w", err)
+			}
+		}
+		if err := applyGovernanceArtifactProfileDefaults(); err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+	}
+
+	switch source {
+	case "contract_abi":
+		if shouldRequireGovernanceArtifactABIs(cfg, source) {
+			if err := validateGovernanceArtifactABIPaths(); err != nil {
+				return nil, fmt.Errorf("fee split governance init: %w", err)
+			}
+		}
+		if shouldRequireExplicitGovernanceArtifactSemantics(cfg, source) {
+			if err := validateGovernanceArtifactSemanticsEnv(); err != nil {
+				return nil, fmt.Errorf("fee split governance init: %w", err)
+			}
+		}
+		reader, err := newContractABIGovernanceReader(nodeDataDir)
+		if err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+		authorizer, err := pblockchain.NewTimelockGovernorFeeSplitAuthorizer(reader, reader)
+		if err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+		return authorizer, nil
+	case "contract_storage":
+		reader, err := newContractStorageGovernanceReader(nodeDataDir)
+		if err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+		authorizer, err := pblockchain.NewTimelockGovernorFeeSplitAuthorizer(reader, reader)
+		if err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+		return authorizer, nil
+	case "static":
+		callers := parseAddressListEnv("O2UL_FEE_SPLIT_GOVERNANCE_CALLERS")
+		if len(callers) == 0 {
+			return nil, fmt.Errorf("fee split governance init: O2UL_FEE_SPLIT_GOVERNANCE_CALLERS is required when static policy source is enabled")
+		}
+		proposalIDs := parseProposalIDListEnv("O2UL_FEE_SPLIT_GOVERNANCE_EXECUTABLE_PROPOSALS")
+		if len(proposalIDs) == 0 {
+			return nil, fmt.Errorf("fee split governance init: O2UL_FEE_SPLIT_GOVERNANCE_EXECUTABLE_PROPOSALS is required when static policy source is enabled")
+		}
+
+		timelock := pblockchain.NewStaticExecutableProposalSet(proposalIDs)
+		governor := pblockchain.NewStaticGovernorCallerAllowlist(callers)
+		authorizer, err := pblockchain.NewTimelockGovernorFeeSplitAuthorizer(timelock, governor)
+		if err != nil {
+			return nil, fmt.Errorf("fee split governance init: %w", err)
+		}
+		return authorizer, nil
+	default:
+		return nil, fmt.Errorf("fee split governance init: invalid O2UL_FEE_SPLIT_GOVERNANCE_POLICY_SOURCE=%q, expected contract_abi|contract_storage|static", source)
+	}
+}
+
+type governanceArtifactProfile struct {
+	GovernorABIPath string `json:"governorAbiPath"`
+	TimelockABIPath string `json:"timelockAbiPath"`
+	GovernorMethod  string `json:"governorMethod"`
+	TimelockMethod  string `json:"timelockMethod"`
+	OperationIDMode string `json:"operationIdMode"`
+	GovernorAddress string `json:"governorAddress"`
+	TimelockAddress string `json:"timelockAddress"`
+	ExecutorRole    string `json:"executorRole"`
+}
+
+func applyGovernanceArtifactProfileDefaults() error {
+	profilePath := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_ARTIFACT_PROFILE_PATH"))
+	if profilePath == "" {
+		return nil
+	}
+	content, err := os.ReadFile(profilePath)
+	if err != nil {
+		return fmt.Errorf("invalid O2UL_FEE_SPLIT_GOVERNANCE_ARTIFACT_PROFILE_PATH=%q: %w", profilePath, err)
+	}
+	var profile governanceArtifactProfile
+	if err := json.Unmarshal(content, &profile); err != nil {
+		return fmt.Errorf("invalid O2UL_FEE_SPLIT_GOVERNANCE_ARTIFACT_PROFILE_PATH=%q: %w", profilePath, err)
+	}
+	profileDir := filepath.Dir(profilePath)
+	setEnvIfUnset("O2UL_FEE_SPLIT_GOVERNOR_ABI_PATH", resolveProfilePath(profileDir, profile.GovernorABIPath))
+	setEnvIfUnset("O2UL_FEE_SPLIT_TIMELOCK_ABI_PATH", resolveProfilePath(profileDir, profile.TimelockABIPath))
+	setEnvIfUnset("O2UL_FEE_SPLIT_GOVERNOR_HAS_ROLE_METHOD", strings.TrimSpace(profile.GovernorMethod))
+	setEnvIfUnset("O2UL_FEE_SPLIT_TIMELOCK_IS_OPERATION_READY_METHOD", strings.TrimSpace(profile.TimelockMethod))
+	setEnvIfUnset("O2UL_FEE_SPLIT_TIMELOCK_OPERATION_ID_MODE", strings.TrimSpace(profile.OperationIDMode))
+	setEnvIfUnset("O2UL_FEE_SPLIT_GOVERNOR_CONTRACT_ADDRESS", strings.TrimSpace(profile.GovernorAddress))
+	setEnvIfUnset("O2UL_FEE_SPLIT_TIMELOCK_CONTRACT_ADDRESS", strings.TrimSpace(profile.TimelockAddress))
+	setEnvIfUnset("O2UL_FEE_SPLIT_GOVERNOR_EXECUTOR_ROLE", strings.TrimSpace(profile.ExecutorRole))
+	return nil
+}
+
+func resolveProfilePath(baseDir string, pathValue string) string {
+	trimmed := strings.TrimSpace(pathValue)
+	if trimmed == "" || filepath.IsAbs(trimmed) {
+		return trimmed
+	}
+	return filepath.Join(baseDir, trimmed)
+}
+
+func setEnvIfUnset(name string, value string) {
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	if strings.TrimSpace(os.Getenv(name)) != "" {
+		return
+	}
+	_ = os.Setenv(name, value)
+}
+
+func shouldRequireGovernanceArtifactABIs(cfg RuntimeBackendConfig, source string) bool {
+	if source != "contract_abi" {
+		return false
+	}
+	required := runtimeBridgeUsesProductionBackends(cfg)
+	if raw := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_ARTIFACT_ABIS")); raw != "" {
+		required = parseBoolEnv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_ARTIFACT_ABIS")
+	}
+	return required
+}
+
+func shouldRequireGovernanceArtifactProfile(cfg RuntimeBackendConfig, source string) bool {
+	if source != "contract_abi" {
+		return false
+	}
+	required := runtimeBridgeUsesProductionBackends(cfg)
+	if raw := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_ARTIFACT_PROFILE")); raw != "" {
+		required = parseBoolEnv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_ARTIFACT_PROFILE")
+	}
+	return required
+}
+
+func shouldRequireExplicitGovernanceArtifactSemantics(cfg RuntimeBackendConfig, source string) bool {
+	if source != "contract_abi" {
+		return false
+	}
+	required := runtimeBridgeUsesProductionBackends(cfg)
+	if raw := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_EXPLICIT_ARTIFACT_SEMANTICS")); raw != "" {
+		required = parseBoolEnv("O2UL_FEE_SPLIT_GOVERNANCE_REQUIRE_EXPLICIT_ARTIFACT_SEMANTICS")
+	}
+	return required
+}
+
+func validateGovernanceArtifactABIPaths() error {
+	governorPath := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNOR_ABI_PATH"))
+	timelockPath := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_TIMELOCK_ABI_PATH"))
+	if governorPath == "" || timelockPath == "" {
+		return fmt.Errorf("O2UL_FEE_SPLIT_GOVERNOR_ABI_PATH and O2UL_FEE_SPLIT_TIMELOCK_ABI_PATH are required when artifact ABI enforcement is enabled")
+	}
+	return nil
+}
+
+func validateGovernanceArtifactProfilePath() error {
+	profilePath := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNANCE_ARTIFACT_PROFILE_PATH"))
+	if profilePath == "" {
+		return fmt.Errorf("O2UL_FEE_SPLIT_GOVERNANCE_ARTIFACT_PROFILE_PATH is required when artifact profile enforcement is enabled")
+	}
+	return nil
+}
+
+func validateGovernanceArtifactSemanticsEnv() error {
+	governorMethod := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_GOVERNOR_HAS_ROLE_METHOD"))
+	timelockMethod := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_TIMELOCK_IS_OPERATION_READY_METHOD"))
+	operationMode := strings.TrimSpace(os.Getenv("O2UL_FEE_SPLIT_TIMELOCK_OPERATION_ID_MODE"))
+	if governorMethod == "" || timelockMethod == "" || operationMode == "" {
+		return fmt.Errorf("O2UL_FEE_SPLIT_GOVERNOR_HAS_ROLE_METHOD, O2UL_FEE_SPLIT_TIMELOCK_IS_OPERATION_READY_METHOD, and O2UL_FEE_SPLIT_TIMELOCK_OPERATION_ID_MODE are required when explicit artifact semantics enforcement is enabled")
+	}
+	return nil
+}
+
+func runtimeBridgeUsesProductionBackends(cfg RuntimeBackendConfig) bool {
+	return cfg.Proofs == BackendModeProduction &&
+		cfg.Shielded == BackendModeProduction &&
+		cfg.NFT == BackendModeProduction &&
+		cfg.Threshold == BackendModeProduction &&
+		cfg.ViewKeys == BackendModeProduction
+}
+
+func parseAddressListEnv(name string) []protocol.Address {
+	parts := strings.Split(strings.TrimSpace(os.Getenv(name)), ",")
+	out := make([]protocol.Address, 0, len(parts))
+	for _, part := range parts {
+		value := protocol.Address(strings.TrimSpace(part))
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func parseProposalIDListEnv(name string) []protocol.ProposalID {
+	parts := strings.Split(strings.TrimSpace(os.Getenv(name)), ",")
+	out := make([]protocol.ProposalID, 0, len(parts))
+	for _, part := range parts {
+		value := protocol.ProposalID(strings.TrimSpace(part))
+		if value == "" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 func buildProofProductionBackend() (proofs.ProductionBackend, error) {

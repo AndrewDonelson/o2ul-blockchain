@@ -1,0 +1,13 @@
+{
+  "contractName": "O2ULTimelockController",
+  "abi": [
+    {
+      "type": "function",
+      "name": "isReadyOperation",
+      "stateMutability": "view",
+      "inputs": [{"name": "id", "type": "bytes32"}],
+      "outputs": [{"name": "", "type": "bool"}]
+    }
+  ],
+  "bytecode": "0x00"
+}

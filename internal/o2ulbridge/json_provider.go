@@ -309,6 +309,46 @@ func (p *JSONRuntimeHookProvider) AllocateFeeHook(input []byte) ([]byte, error) 
 	})
 }
 
+func (p *JSONRuntimeHookProvider) ConfigureFeeDistributionSplitHook(input []byte) ([]byte, error) {
+	if p.bridge == nil {
+		return nil, ErrRuntimeBridgeNotSet
+	}
+	var req pblockchain.ConfigureFeeDistributionSplitRequest
+	if err := json.Unmarshal(input, &req); err != nil {
+		return nil, err
+	}
+	split, err := p.bridge.ConfigureFeeDistributionSplitHook(req)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		Split interface{} `json:"split"`
+	}{
+		Split: split,
+	})
+}
+
+func (p *JSONRuntimeHookProvider) GetFeeDistributionSplitHook(input []byte) ([]byte, error) {
+	if p.bridge == nil {
+		return nil, ErrRuntimeBridgeNotSet
+	}
+	if len(input) > 0 {
+		var ignored struct{}
+		if err := json.Unmarshal(input, &ignored); err != nil {
+			return nil, err
+		}
+	}
+	split, err := p.bridge.GetFeeDistributionSplitHook()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		Split interface{} `json:"split"`
+	}{
+		Split: split,
+	})
+}
+
 func (p *JSONRuntimeHookProvider) SelectArbitratorsHook(input []byte) ([]byte, error) {
 	if p.bridge == nil {
 		return nil, ErrRuntimeBridgeNotSet

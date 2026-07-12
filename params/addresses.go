@@ -29,4 +29,10 @@ var (
 
 	// GovernanceSystemAddress is the official system address for governance operations
 	GovernanceSystemAddress = common.HexToAddress("0x0000000000000000000000000000000000001006")
+
+	// GovernanceGovernorContractAddress is the canonical governor contract address.
+	GovernanceGovernorContractAddress = common.HexToAddress("0x0000000000000000000000000000000000001007")
+
+	// GovernanceTimelockContractAddress is the canonical timelock contract address.
+	GovernanceTimelockContractAddress = common.HexToAddress("0x0000000000000000000000000000000000001008")
 )
