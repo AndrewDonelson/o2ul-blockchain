@@ -63,6 +63,8 @@ import (
 )
 
 var (
+	o2ulIncludeUpstreamExecutionSpecEnv = "O2UL_INCLUDE_UPSTREAM_EXECUTION_SPEC_TESTS"
+
 	// Files that end up in the geth*.zip archive.
 	gethArchiveFiles = []string{
 		"COPYING",
@@ -127,6 +129,10 @@ var (
 
 	// This is where the tests should be unpacked.
 	executionSpecTestsDir = "tests/spec-tests"
+
+	// The upstream execution-spec package expects Ethereum baseline semantics and
+	// currently diverges from O2UL fork behavior (custom precompile surface).
+	upstreamExecutionSpecTestsPackage = "github.com/ethereum/go-ethereum/tests"
 )
 
 var GOBIN, _ = filepath.Abs(filepath.Join("build", "bin"))
@@ -323,9 +329,47 @@ func doTest(cmdline []string) {
 	packages := []string{"./..."}
 	if len(flag.CommandLine.Args()) > 0 {
 		packages = flag.CommandLine.Args()
+	} else {
+		packages = resolveDefaultTestPackages(tc)
 	}
 	gotest.Args = append(gotest.Args, packages...)
 	build.MustRun(gotest)
+}
+
+func resolveDefaultTestPackages(tc build.GoToolchain) []string {
+	if includeUpstreamExecutionSpecTests() {
+		log.Printf("including upstream execution-spec package in default test run because %s is enabled", o2ulIncludeUpstreamExecutionSpecEnv)
+		return []string{"./..."}
+	}
+
+	listCmd := tc.Go("list", "./...")
+	output, err := listCmd.Output()
+	if err != nil {
+		log.Fatalf("failed to enumerate test packages with %q: %v", strings.Join(listCmd.Args, " "), err)
+	}
+
+	allPackages := strings.Fields(string(output))
+	filtered := make([]string, 0, len(allPackages))
+	skipped := 0
+	for _, pkg := range allPackages {
+		if pkg == upstreamExecutionSpecTestsPackage {
+			skipped++
+			continue
+		}
+		filtered = append(filtered, pkg)
+	}
+	if len(filtered) == 0 {
+		log.Fatal("no packages remain after default O2UL package filtering")
+	}
+	if skipped > 0 {
+		log.Printf("excluding %d upstream execution-spec package from default O2UL test run; set %s=1 to include it", skipped, o2ulIncludeUpstreamExecutionSpecEnv)
+	}
+	return filtered
+}
+
+func includeUpstreamExecutionSpecTests() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv(o2ulIncludeUpstreamExecutionSpecEnv)))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
 // downloadSpecTestFixtures downloads and extracts the execution-spec-tests fixtures.
