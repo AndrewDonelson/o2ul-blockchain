@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	pblockchain "github.com/AndrewDonelson/o2ul-proprietary/pkg/blockchain"
+	"github.com/AndrewDonelson/o2ul-proprietary/pkg/consensus"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/nft"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/proofs"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/protocol"
@@ -53,6 +54,29 @@ func newTestRuntimeBridge(t *testing.T) *pblockchain.RuntimeBridge {
 	})
 	if err != nil {
 		t.Fatalf("new runtime bridge: %v", err)
+	}
+	return bridge
+}
+
+func newConsensusTestRuntimeBridge(t *testing.T) *pblockchain.RuntimeBridge {
+	t.Helper()
+	proofSys := proofs.NewHashProofSystem(0)
+	consensusAdapter := consensus.NewBasicEngineWithConfig(proofSys, consensus.BasicEngineConfig{
+		CircuitID:      protocol.CircuitID("proof"),
+		GenesisHash:    protocol.Hash("genesis-hash"),
+		RegisteredNode: []protocol.NodeID{"node-a"},
+	})
+	bridge, err := pblockchain.NewRuntimeBridge(pblockchain.RuntimeBridgeDeps{
+		Proofs:       proofSys,
+		Shielded:     shielded.NewInMemoryPool(),
+		NFT:          nft.NewInMemoryRegistry(),
+		NFTOwnership: nft.NewHashOwnershipVerifier(),
+		Threshold:    threshold.NewSimpleSigner(),
+		ViewKeys:     viewkeys.NewSimpleManager(),
+		Consensus:    consensusAdapter,
+	})
+	if err != nil {
+		t.Fatalf("new consensus test runtime bridge: %v", err)
 	}
 	return bridge
 }
@@ -141,6 +165,68 @@ func TestJSONRuntimeProviderSupportsShieldedCreateAndReplayCheck(t *testing.T) {
 	}
 }
 
+func TestJSONRuntimeProviderConsensusVerifyAndAttestationPolicies(t *testing.T) {
+	provider := NewJSONRuntimeHookProvider(newConsensusTestRuntimeBridge(t))
+
+	proof, err := proofs.NewHashProofSystem(0).Prove(protocol.CircuitID("proof"), protocol.Witness("block-1"))
+	if err != nil {
+		t.Fatalf("prove: %v", err)
+	}
+	verifyReq, err := json.Marshal(pblockchain.ConsensusVerifyBlockRequest{
+		Header: protocol.BlockHeader{
+			Number:    1,
+			Hash:      protocol.Hash("block-1"),
+			Parent:    protocol.Hash("genesis-hash"),
+			Timestamp: 1,
+		},
+		Proof: proof,
+	})
+	if err != nil {
+		t.Fatalf("marshal verify request: %v", err)
+	}
+	verifyOut, err := provider.VerifyConsensusBlockHook(verifyReq)
+	if err != nil {
+		t.Fatalf("verify consensus block hook: %v", err)
+	}
+	var verifyResp struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(verifyOut, &verifyResp); err != nil {
+		t.Fatalf("unmarshal verify response: %v", err)
+	}
+	if !verifyResp.OK {
+		t.Fatal("expected consensus verify response OK")
+	}
+
+	badAttReq, err := json.Marshal(pblockchain.ConsensusSubmitAttestationRequest{
+		NodeID:    protocol.NodeID("node-b"),
+		BlockHash: protocol.Hash("block-1"),
+	})
+	if err != nil {
+		t.Fatalf("marshal bad attestation request: %v", err)
+	}
+	_, err = provider.SubmitConsensusAttestationHook(badAttReq)
+	if !errors.Is(err, consensus.ErrUnregisteredNode) {
+		t.Fatalf("expected unregistered node error, got %v", err)
+	}
+
+	goodAttReq, err := json.Marshal(pblockchain.ConsensusSubmitAttestationRequest{
+		NodeID:    protocol.NodeID("node-a"),
+		BlockHash: protocol.Hash("block-1"),
+	})
+	if err != nil {
+		t.Fatalf("marshal good attestation request: %v", err)
+	}
+	_, err = provider.SubmitConsensusAttestationHook(goodAttReq)
+	if err != nil {
+		t.Fatalf("expected first valid attestation to pass, got %v", err)
+	}
+	_, err = provider.SubmitConsensusAttestationHook(goodAttReq)
+	if !errors.Is(err, consensus.ErrDuplicateAttestation) {
+		t.Fatalf("expected duplicate attestation error, got %v", err)
+	}
+}
+
 func TestInstallDefaultRuntimeBridgeSetsVMProvider(t *testing.T) {
 	vm.SetO2ULRuntimeHookProvider(nil)
 	if err := InstallDefaultRuntimeBridge(); err != nil {
@@ -172,6 +258,7 @@ func TestRuntimeBackendConfigFromEnvAndInstall(t *testing.T) {
 	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
 	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
 	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_CONSENSUS_NETWORK_TYPE", "")
 
 	cfg, err := RuntimeBackendConfigFromEnv()
 	if err != nil {
@@ -179,6 +266,9 @@ func TestRuntimeBackendConfigFromEnvAndInstall(t *testing.T) {
 	}
 	if cfg.Proofs != BackendModeProduction || cfg.Threshold != BackendModeProduction {
 		t.Fatalf("unexpected parsed modes: %+v", cfg)
+	}
+	if cfg.Consensus.RequiredCircuitID != "" {
+		t.Fatalf("expected empty consensus required circuit when env not set, got: %s", cfg.Consensus.RequiredCircuitID)
 	}
 
 	vm.SetO2ULRuntimeHookProvider(nil)
@@ -219,6 +309,150 @@ func TestRuntimeBackendConfigFromEnvAndInstall(t *testing.T) {
 	}
 	if !resp.OK {
 		t.Fatal("expected successful proof verification with production mode")
+	}
+}
+
+func TestRuntimeBackendConfigFromEnvRejectsInvalidConsensusNetworkType(t *testing.T) {
+	t.Setenv("O2UL_CONSENSUS_NETWORK_TYPE", "invalid-network")
+	_, err := RuntimeBackendConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid consensus network type error")
+	}
+}
+
+func TestRuntimeBackendConfigFromEnvParsesConsensusNetworkType(t *testing.T) {
+	t.Setenv("O2UL_CONSENSUS_NETWORK_TYPE", "o2ul-testnet")
+	t.Setenv("O2UL_CONSENSUS_REGISTERED_NODES", "node-a,node-b")
+	t.Setenv("O2UL_CONSENSUS_GENESIS_HASH", "genesis-hash")
+	cfg, err := RuntimeBackendConfigFromEnv()
+	if err != nil {
+		t.Fatalf("runtime backend config from env: %v", err)
+	}
+	if cfg.Consensus.NetworkType != "o2ul-testnet" {
+		t.Fatalf("unexpected consensus network type: %+v", cfg.Consensus)
+	}
+	if cfg.Consensus.RequiredCircuitID != protocol.CircuitID("consensus.block.verify.v1.testnet") {
+		t.Fatalf("unexpected consensus required circuit: %s", cfg.Consensus.RequiredCircuitID)
+	}
+	if len(cfg.Consensus.RegisteredNodes) != 2 {
+		t.Fatalf("unexpected consensus registered nodes: %+v", cfg.Consensus.RegisteredNodes)
+	}
+	if string(cfg.Consensus.GenesisHash) != "genesis-hash" {
+		t.Fatalf("unexpected consensus genesis hash: %s", string(cfg.Consensus.GenesisHash))
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvWiresConsensusAttestationPolicy(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "deterministic")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_CONSENSUS_NETWORK_TYPE", "o2ul-testnet")
+	t.Setenv("O2UL_CONSENSUS_REGISTERED_NODES", "node-a")
+	t.Setenv("O2UL_CONSENSUS_GENESIS_HASH", "genesis-hash")
+
+	cfg, err := RuntimeBackendConfigFromEnv()
+	if err != nil {
+		t.Fatalf("runtime backend config from env: %v", err)
+	}
+	bridge, err := newRuntimeBridgeWithConfig(cfg, "")
+	if err != nil {
+		t.Fatalf("new runtime bridge with config: %v", err)
+	}
+	provider := NewJSONRuntimeHookProvider(bridge)
+
+	proof, err := proofs.NewHashProofSystem(0).Prove(protocol.CircuitID("consensus.block.verify.v1.testnet"), protocol.Witness("block-1"))
+	if err != nil {
+		t.Fatalf("prove: %v", err)
+	}
+	verifyReq, err := json.Marshal(pblockchain.ConsensusVerifyBlockRequest{
+		Header: protocol.BlockHeader{
+			Number:    1,
+			Hash:      protocol.Hash("block-1"),
+			Parent:    protocol.Hash("genesis-hash"),
+			Timestamp: 1,
+		},
+		Proof: proof,
+	})
+	if err != nil {
+		t.Fatalf("marshal verify request: %v", err)
+	}
+	if _, err := provider.VerifyConsensusBlockHook(verifyReq); err != nil {
+		t.Fatalf("verify consensus block hook: %v", err)
+	}
+
+	badAttReq, err := json.Marshal(pblockchain.ConsensusSubmitAttestationRequest{
+		NodeID:    protocol.NodeID("node-b"),
+		BlockHash: protocol.Hash("block-1"),
+	})
+	if err != nil {
+		t.Fatalf("marshal bad attestation request: %v", err)
+	}
+	_, err = provider.SubmitConsensusAttestationHook(badAttReq)
+	if !errors.Is(err, consensus.ErrUnregisteredNode) {
+		t.Fatalf("expected unregistered node error, got %v", err)
+	}
+}
+
+func TestInstallRuntimeBridgeFromEnvEnforcesConsensusCircuitPolicy(t *testing.T) {
+	t.Setenv("O2UL_BACKEND_PROOFS", "production")
+	t.Setenv("O2UL_BACKEND_SHIELDED", "deterministic")
+	t.Setenv("O2UL_BACKEND_NFT", "deterministic")
+	t.Setenv("O2UL_BACKEND_THRESHOLD", "deterministic")
+	t.Setenv("O2UL_BACKEND_VIEWKEYS", "deterministic")
+	t.Setenv("O2UL_CONSENSUS_NETWORK_TYPE", "o2ul-testnet")
+
+	vm.SetO2ULRuntimeHookProvider(nil)
+	if err := InstallRuntimeBridgeFromEnv(); err != nil {
+		t.Fatalf("install runtime bridge from env: %v", err)
+	}
+	t.Cleanup(func() { vm.SetO2ULRuntimeHookProvider(nil) })
+
+	pc := vm.PrecompiledContractsPrague[vm.O2ULPrecompileProofVerify]
+	if pc == nil {
+		t.Fatal("expected proof verify precompile")
+	}
+
+	production := proofs.NewHashProductionBackend(0)
+	proof, err := production.Prove(protocol.CircuitID("consensus.block.verify.v1.testnet"), protocol.Witness("witness"))
+	if err != nil {
+		t.Fatalf("production prove: %v", err)
+	}
+
+	reqOK, err := json.Marshal(pblockchain.ProofVerifyRequest{
+		Circuit:      protocol.CircuitID("consensus.block.verify.v1.testnet"),
+		Proof:        proof,
+		PublicInputs: protocol.PublicInputs("witness"),
+	})
+	if err != nil {
+		t.Fatalf("marshal proof verify request: %v", err)
+	}
+	out, err := pc.Run(reqOK)
+	if err != nil {
+		t.Fatalf("run proof precompile (ok path): %v", err)
+	}
+	var resp struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.OK {
+		t.Fatal("expected successful proof verification for required consensus circuit")
+	}
+
+	reqMismatch, err := json.Marshal(pblockchain.ProofVerifyRequest{
+		Circuit:      protocol.CircuitID("consensus.block.verify.v1.mainnet"),
+		Proof:        proof,
+		PublicInputs: protocol.PublicInputs("witness"),
+	})
+	if err != nil {
+		t.Fatalf("marshal mismatch proof verify request: %v", err)
+	}
+	_, err = pc.Run(reqMismatch)
+	if err == nil {
+		t.Fatal("expected mismatch path to return consensus circuit policy error")
 	}
 }
 

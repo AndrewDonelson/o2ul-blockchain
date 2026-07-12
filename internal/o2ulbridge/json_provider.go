@@ -41,6 +41,39 @@ func (p *JSONRuntimeHookProvider) VerifyProofHook(input []byte) ([]byte, error) 
 	}{OK: ok})
 }
 
+func (p *JSONRuntimeHookProvider) VerifyConsensusBlockHook(input []byte) ([]byte, error) {
+	if p.bridge == nil {
+		return nil, ErrRuntimeBridgeNotSet
+	}
+	var req pblockchain.ConsensusVerifyBlockRequest
+	if err := json.Unmarshal(input, &req); err != nil {
+		return nil, err
+	}
+	ok, err := p.bridge.VerifyConsensusBlockHook(req)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		OK bool `json:"ok"`
+	}{OK: ok})
+}
+
+func (p *JSONRuntimeHookProvider) SubmitConsensusAttestationHook(input []byte) ([]byte, error) {
+	if p.bridge == nil {
+		return nil, ErrRuntimeBridgeNotSet
+	}
+	var req pblockchain.ConsensusSubmitAttestationRequest
+	if err := json.Unmarshal(input, &req); err != nil {
+		return nil, err
+	}
+	if err := p.bridge.SubmitConsensusAttestationHook(req); err != nil {
+		return nil, err
+	}
+	return json.Marshal(struct {
+		OK bool `json:"ok"`
+	}{OK: true})
+}
+
 func (p *JSONRuntimeHookProvider) CreateShieldedNoteHook(input []byte) ([]byte, error) {
 	if p.bridge == nil {
 		return nil, ErrRuntimeBridgeNotSet

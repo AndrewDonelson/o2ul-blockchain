@@ -10,8 +10,10 @@ import (
 	"time"
 
 	pblockchain "github.com/AndrewDonelson/o2ul-proprietary/pkg/blockchain"
+	"github.com/AndrewDonelson/o2ul-proprietary/pkg/consensus"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/nft"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/proofs"
+	"github.com/AndrewDonelson/o2ul-proprietary/pkg/protocol"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/shielded"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/threshold"
 	"github.com/AndrewDonelson/o2ul-proprietary/pkg/viewkeys"
@@ -118,6 +120,14 @@ type RuntimeBackendConfig struct {
 	NFT       BackendMode
 	Threshold BackendMode
 	ViewKeys  BackendMode
+	Consensus ConsensusRuntimeConfig
+}
+
+type ConsensusRuntimeConfig struct {
+	NetworkType       string
+	RequiredCircuitID protocol.CircuitID
+	RegisteredNodes   []protocol.NodeID
+	GenesisHash       protocol.Hash
 }
 
 func DefaultRuntimeBackendConfig() RuntimeBackendConfig {
@@ -127,6 +137,7 @@ func DefaultRuntimeBackendConfig() RuntimeBackendConfig {
 		NFT:       BackendModeDeterministic,
 		Threshold: BackendModeDeterministic,
 		ViewKeys:  BackendModeDeterministic,
+		Consensus: ConsensusRuntimeConfig{},
 	}
 }
 
@@ -148,7 +159,65 @@ func RuntimeBackendConfigFromEnv() (RuntimeBackendConfig, error) {
 	if cfg.ViewKeys, err = parseBackendModeWithDefault("O2UL_BACKEND_VIEWKEYS", cfg.ViewKeys); err != nil {
 		return RuntimeBackendConfig{}, err
 	}
+	if cfg.Consensus, err = parseConsensusRuntimeConfigFromEnv(cfg.Consensus); err != nil {
+		return RuntimeBackendConfig{}, err
+	}
 	return cfg, nil
+}
+
+func parseConsensusRuntimeConfigFromEnv(def ConsensusRuntimeConfig) (ConsensusRuntimeConfig, error) {
+	networkType := strings.TrimSpace(strings.ToLower(os.Getenv("O2UL_CONSENSUS_NETWORK_TYPE")))
+	if networkType == "" {
+		if strings.TrimSpace(def.NetworkType) == "" {
+			return ConsensusRuntimeConfig{}, nil
+		}
+		networkType = def.NetworkType
+	}
+	profile, err := consensus.ResolveNetworkProfile(networkType)
+	if err != nil {
+		return ConsensusRuntimeConfig{}, fmt.Errorf("consensus runtime config: %w", err)
+	}
+
+	registeredRaw := strings.TrimSpace(os.Getenv("O2UL_CONSENSUS_REGISTERED_NODES"))
+	registeredNodes := make([]protocol.NodeID, 0)
+	if registeredRaw != "" {
+		for _, part := range strings.Split(registeredRaw, ",") {
+			node := protocol.NodeID(strings.TrimSpace(part))
+			if node == "" {
+				continue
+			}
+			registeredNodes = append(registeredNodes, node)
+		}
+	}
+
+	genesisRaw := strings.TrimSpace(os.Getenv("O2UL_CONSENSUS_GENESIS_HASH"))
+	var genesisHash protocol.Hash
+	if genesisRaw != "" {
+		genesisHash = protocol.Hash(genesisRaw)
+	}
+
+	return ConsensusRuntimeConfig{
+		NetworkType:       networkType,
+		RequiredCircuitID: profile.CircuitID,
+		RegisteredNodes:   registeredNodes,
+		GenesisHash:       genesisHash,
+	}, nil
+}
+
+type consensusCircuitEnforcingProofSystem struct {
+	inner           proofs.ProofSystem
+	requiredCircuit protocol.CircuitID
+}
+
+func (p consensusCircuitEnforcingProofSystem) Prove(circuit protocol.CircuitID, witness protocol.Witness) (protocol.Proof, error) {
+	return p.inner.Prove(circuit, witness)
+}
+
+func (p consensusCircuitEnforcingProofSystem) Verify(circuit protocol.CircuitID, proof protocol.Proof, publicInputs protocol.PublicInputs) (bool, error) {
+	if p.requiredCircuit != "" && circuit != p.requiredCircuit {
+		return false, fmt.Errorf("consensus circuit policy mismatch: expected %s got %s", p.requiredCircuit, circuit)
+	}
+	return p.inner.Verify(circuit, proof, publicInputs)
 }
 
 func parseBackendModeWithDefault(env string, def BackendMode) (BackendMode, error) {
@@ -182,6 +251,12 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Consensus.RequiredCircuitID != "" {
+		proofSys = consensusCircuitEnforcingProofSystem{
+			inner:           proofSys,
+			requiredCircuit: cfg.Consensus.RequiredCircuitID,
+		}
+	}
 
 	shieldedPool, err := buildShieldedPool(cfg, nodeDataDir)
 	if err != nil {
@@ -201,6 +276,19 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 		return nil, err
 	}
 
+	var consensusAdapter pblockchain.ConsensusAdapter
+	if cfg.Consensus.NetworkType != "" {
+		consensusAdapter, err = consensus.NewBasicEngineForNetwork(
+			proofSys,
+			cfg.Consensus.NetworkType,
+			cfg.Consensus.GenesisHash,
+			cfg.Consensus.RegisteredNodes,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("consensus adapter init: %w", err)
+		}
+	}
+
 	return pblockchain.NewRuntimeBridge(pblockchain.RuntimeBridgeDeps{
 		Proofs:       proofSys,
 		Shielded:     shieldedPool,
@@ -208,6 +296,7 @@ func newRuntimeBridgeWithConfig(cfg RuntimeBackendConfig, nodeDataDir string) (*
 		NFTOwnership: nftOwnership,
 		Threshold:    thresholdSigner,
 		ViewKeys:     viewKeyManager,
+		Consensus:    consensusAdapter,
 	})
 }
 
