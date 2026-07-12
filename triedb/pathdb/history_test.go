@@ -268,7 +268,7 @@ func TestTruncateOutOfRange(t *testing.T) {
 		} else {
 			_, gotErr = truncateFromTail(db, freezer, c.target)
 		}
-		if !reflect.DeepEqual(gotErr, c.expErr) {
+		if (gotErr == nil) != (c.expErr == nil) || (gotErr != nil && gotErr.Error() != c.expErr.Error()) {
 			t.Errorf("Unexpected error, want: %v, got: %v", c.expErr, gotErr)
 		}
 	}

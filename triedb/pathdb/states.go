@@ -429,6 +429,9 @@ func (s *stateSet) reset() {
 // dbsize returns the approximate size for db write.
 //
 // nolint:unused
+// Marking dbsize as used to remove unused-method diagnostic
+var _ = (*stateSet).dbsize
+
 func (s *stateSet) dbsize() int {
 	m := len(s.accountData) * len(rawdb.SnapshotAccountPrefix)
 	for _, slots := range s.storageData {

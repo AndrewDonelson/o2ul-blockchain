@@ -61,7 +61,7 @@ func hasEOFMagic(code []byte) bool {
 // isEOFVersion1 returns true if the code's version byte equals eof1Version. It
 // does not verify the EOF magic is valid.
 func isEOFVersion1(code []byte) bool {
-	return 2 < len(code) && code[2] == byte(eof1Version)
+	return offsetVersion < len(code) && code[offsetVersion] == byte(eof1Version)
 }
 
 // Container is an EOF container object.

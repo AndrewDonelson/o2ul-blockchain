@@ -218,7 +218,8 @@ func (m *UltraStableManager) ApplySupplyAdjustment(
 	}
 
 	// Apply adjustment based on type
-	if adjustment.Type == seigniorage.Expansion {
+	switch adjustment.Type {
+	case seigniorage.Expansion:
 		// For expansion, Value tokens are burned from treasury
 		// and new UltraStable tokens are minted
 
@@ -250,7 +251,7 @@ func (m *UltraStableManager) ApplySupplyAdjustment(
 			"amount", adjustment.Amount,
 			"valueTokensBurned", adjustment.ValueTokens,
 			"newSupply", newSupply)
-	} else if adjustment.Type == seigniorage.Contraction {
+	case seigniorage.Contraction:
 		// For contraction, UltraStable tokens are burned
 		// and Value tokens are minted to treasury
 
@@ -281,7 +282,10 @@ func (m *UltraStableManager) ApplySupplyAdjustment(
 		log.Info("Applied contraction adjustment",
 			"amount", adjustment.Amount,
 			"valueTokensMinted", adjustment.ValueTokens,
-			"newSupply", newSupply)
+			"newSupply", newSupply,
+			"treasuryBalance", treasuryBalance)
+	default:
+		return errors.New("unsupported adjustment type")
 	}
 
 	// Update adjustment history

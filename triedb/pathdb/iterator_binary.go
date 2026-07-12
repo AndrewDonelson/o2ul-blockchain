@@ -215,6 +215,13 @@ type accountBinaryIterator struct {
 	layer layer
 }
 
+var (
+	_ = (*diskLayer).newBinaryAccountIterator
+	_ = (*diffLayer).newBinaryAccountIterator
+	_ = (*diskLayer).newBinaryStorageIterator
+	_ = (*diffLayer).newBinaryStorageIterator
+)
+
 // newBinaryAccountIterator creates a simplistic account iterator to step over
 // all the accounts in a slow, but easily verifiable way.
 //

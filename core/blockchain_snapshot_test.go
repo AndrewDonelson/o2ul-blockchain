@@ -61,6 +61,8 @@ type snapshotTestBasic struct {
 	gspec   *Genesis
 }
 
+var _ = (*snapshotTestBasic).dump
+
 func (basic *snapshotTestBasic) prepare(t *testing.T) (*BlockChain, []*types.Block) {
 	// Create a temporary persistent database
 	datadir := t.TempDir()
@@ -159,7 +161,6 @@ func (basic *snapshotTestBasic) verify(t *testing.T, chain *BlockChain, blocks [
 	}
 }
 
-//nolint:unused
 func (basic *snapshotTestBasic) dump() string {
 	buffer := new(strings.Builder)
 
